@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arcane Pool: Sinuca Clássica e Arcana</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div id="brand">
+        <h1>Arcane Pool</h1>
+        <span id="subtitle">FASE 6 — Bolas Mágicas</span>
+      </div>
+
+      <div id="scoreboard">
+        <div class="playerCard" data-seat="1">
+          <div class="playerName">Jogador 1</div>
+          <div class="playerScore">0</div>
+          <div class="playerArcana hidden">✦ <span class="arcanaValue">0</span></div>
+          <div class="playerBadge hidden">Vez</div>
+        </div>
+        <div id="turnIndicator">
+          <span id="turnLabel">Vez de: Jogador 1</span>
+          <span id="stateLabel">Pronto</span>
+          <span id="shotTimer" aria-label="Tempo da tacada">00:45</span>
+        </div>
+        <div class="playerCard" data-seat="2">
+          <div class="playerName">Jogador 2</div>
+          <div class="playerScore">0</div>
+          <div class="playerArcana hidden">✦ <span class="arcanaValue">0</span></div>
+          <div class="playerBadge hidden">Vez</div>
+        </div>
+      </div>
+
+      <div id="controls">
+        <select id="modeSelect" aria-label="Modo de jogo">
+          <option value="classic">Modo Clássico</option>
+          <option value="arcane">Modo Arcano</option>
+        </select>
+        <button id="shopButton" type="button" class="hidden">Loja Arcana (L)</button>
+        <button id="resetButton" type="button">Nova partida</button>
+        <button id="audioButton" type="button">Ativar som</button>
+      </div>
+    </header>
+
+    <main id="stage">
+      <canvas id="gameCanvas" aria-label="Mesa de sinuca"></canvas>
+
+      <div id="forcePanel" aria-label="Indicador de força">
+        <div id="forceIdealZone" aria-hidden="true"></div>
+        <div id="forceFill"></div>
+        <div id="forceText">Força: 0%</div>
+      </div>
+
+      <div id="activeEffectsPanel" class="hidden" aria-label="Efeitos arcanos ativos"></div>
+
+      <div id="magicBallPanel" class="hidden" role="status" aria-live="polite">
+        <span class="magicBallGlyph">✦</span>
+        <span id="magicBallLabel">Bola Mágica</span>
+        <span id="magicBallTurns">2 turnos</span>
+      </div>
+
+      <div id="targetPrompt" class="hidden" role="status">
+        <span id="targetPromptText">Selecione um alvo na mesa</span>
+        <button id="targetCancelButton" type="button">Cancelar</button>
+      </div>
+
+      <div id="spinPanel" aria-label="Controle de efeito">
+        <button id="spinToggle" type="button" aria-expanded="true">Efeito</button>
+        <div id="spinContent">
+        <div id="spinTitle">Efeito na bola branca</div>
+        <div id="spinBall">
+          <div id="spinDot"></div>
+        </div>
+        <div id="spinInfo">Efeito: 0.00, 0.00</div>
+        <button id="spinReset" type="button">Zerar efeito</button>
+        </div>
+      </div>
+
+      <div id="inventoryPanel" class="hidden" aria-label="Inventário">
+        <div class="inventoryTitle">Inventário</div>
+        <div id="inventorySlots">
+          <div class="inventorySlot empty" data-slot="0">
+            <div class="slotLabel">Vazio</div>
+          </div>
+          <div class="inventorySlot empty" data-slot="1">
+            <div class="slotLabel">Vazio</div>
+          </div>
+          <div class="inventorySlot empty" data-slot="2">
+            <div class="slotLabel">Vazio</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="help">
+        Mouse: mira | Clique e arraste: força | ESC: cancela | R: nova partida | L: loja (modo arcano)
+      </div>
+
+      <div id="toastContainer"></div>
+    </main>
+
+    <div id="shopOverlay" class="hidden">
+      <div id="shopCard">
+        <div class="shopHeader">
+          <h2>Loja Arcana</h2>
+          <div class="shopInfo">
+            <div class="shopArcana">✦ <span id="shopArcanaValue">0</span></div>
+            <div class="shopInventory">Slots: <span id="shopInventorySpace">0/3</span></div>
+          </div>
+        </div>
+
+        <div id="shopOffers"></div>
+
+        <div class="shopActions">
+          <button id="shopRerollButton" type="button">
+            Rolar loja (✦ <span id="rerollCostValue">1</span>)
+          </button>
+          <button id="shopCloseButton" type="button" class="secondary">Fechar loja</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="gameOverOverlay" class="hidden">
+      <div id="gameOverCard">
+        <h2 id="gameOverTitle">Fim de partida</h2>
+        <p id="gameOverReason"></p>
+        <div id="gameOverScores"></div>
+        <button id="gameOverButton" type="button">Nova partida</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="physics.js"></script>
+  <script src="specials.js"></script>
+  <script src="protocol.js"></script>
+  <script src="rules.js"></script>
+  <script src="net.js"></script>
+  <script src="audio.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
