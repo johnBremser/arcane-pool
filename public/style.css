@@ -183,6 +183,8 @@ button:active {
 
 #stage {
   position: relative;
+  padding-top: 44px;
+  padding-bottom: 52px;
   border-radius: 24px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -200,7 +202,7 @@ button:active {
 #forcePanel {
   position: absolute;
   left: 50%;
-  bottom: 16px;
+  bottom: 8px;
   transform: translateX(-50%);
   width: min(480px, 62%);
   height: 34px;
@@ -251,7 +253,7 @@ button:active {
 #spinPanel {
   position: absolute;
   left: 14px;
-  bottom: 14px;
+  bottom: 8px;
   width: 156px;
   padding: 12px;
   border-radius: 18px;
@@ -265,8 +267,47 @@ button:active {
   gap: 9px;
 }
 
-#spinToggle {
-  display: none;
+.hudPanelToggle {
+  width: 100%;
+  min-width: 118px;
+  padding: 8px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(233, 196, 106, 0.34);
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(37, 45, 58, 0.96), rgba(12, 18, 27, 0.96));
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.34);
+  font-size: 11px;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+}
+
+.hudPanelToggle::after {
+  content: "\2212";
+  margin-left: auto;
+  color: var(--gold);
+  font-size: 16px;
+  line-height: 0.8;
+}
+
+.collapsed > .hudPanelToggle::after {
+  content: "+";
+}
+
+.hudPanelToggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.hudPanelCount {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(104, 200, 255, 0.14);
+  color: var(--blue);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 #spinContent {
@@ -323,10 +364,12 @@ button:active {
 
 #help {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  max-width: min(52vw, 560px);
-  padding: 9px 12px;
+  top: 7px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  max-width: min(50vw, 600px);
+  padding: 7px 11px;
   border-radius: 12px;
   background: rgba(4, 8, 14, 0.58);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -338,7 +381,7 @@ button:active {
 
 #toastContainer {
   position: absolute;
-  top: 14px;
+  top: 48px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -507,7 +550,27 @@ button:active {
   color: var(--green);
 }
 
-#gameOverButton {
+#gameOverRematchStatus {
+  min-height: 18px;
+  margin: -10px 0 18px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#gameOverRematchStatus.hidden,
+#gameOverExitButton.hidden {
+  display: none;
+}
+
+#gameOverActions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#gameOverActions button {
   padding: 12px 28px;
   font-size: 14px;
 }
@@ -640,7 +703,7 @@ button:active {
 #inventoryPanel {
   position: absolute;
   right: 14px;
-  bottom: 14px;
+  bottom: 8px;
   width: 200px;
   padding: 12px;
   border-radius: 18px;
@@ -654,14 +717,27 @@ button:active {
   display: none;
 }
 
-.inventoryTitle {
-  font-size: 12px;
-  color: var(--muted);
-  text-align: center;
+#inventoryPanel .hudPanelToggle {
   margin-bottom: 8px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  font-weight: 800;
+}
+
+#spinPanel.collapsed,
+#inventoryPanel.collapsed {
+  width: auto;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+#spinPanel.collapsed #spinContent,
+#inventoryPanel.collapsed #inventorySlots {
+  display: none;
+}
+
+#inventoryPanel.collapsed .hudPanelToggle {
+  margin-bottom: 0;
 }
 
 #inventorySlots {
@@ -747,7 +823,7 @@ button:active {
 
 #activeEffectsPanel {
   position: absolute;
-  top: 12px;
+  top: 7px;
   left: 12px;
   z-index: 15;
   display: flex;
@@ -765,7 +841,7 @@ button:active {
 
 #magicBallPanel {
   position: absolute;
-  top: 50px;
+  top: 7px;
   right: 12px;
   z-index: 16;
   display: flex;
@@ -817,7 +893,7 @@ button:active {
 
 #targetPrompt {
   position: absolute;
-  top: 54px;
+  top: 5px;
   left: 50%;
   z-index: 40;
   transform: translateX(-50%);
@@ -1017,6 +1093,8 @@ button:active {
 
 @media (max-width: 600px) {
   #stage {
+    padding-top: 0;
+    padding-bottom: 0;
     overflow: visible;
   }
 
@@ -1041,26 +1119,6 @@ button:active {
     z-index: 8;
   }
 
-  #spinToggle {
-    display: block;
-    width: 100%;
-    padding: 7px 10px;
-    font-size: 11px;
-  }
-
-  #spinPanel.collapsed {
-    width: auto;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    backdrop-filter: none;
-    box-shadow: none;
-  }
-
-  #spinPanel.collapsed #spinContent {
-    display: none;
-  }
-
   #spinBall {
     width: 78px;
     height: 78px;
@@ -1073,6 +1131,11 @@ button:active {
     width: auto;
     margin: 8px;
     padding: 10px;
+  }
+
+  #inventoryPanel.collapsed {
+    width: fit-content;
+    margin-left: auto;
   }
 
   #inventorySlots {
@@ -1180,6 +1243,216 @@ button.secondary {
   color: #08111f;
 }
 
+button.danger {
+  background: linear-gradient(180deg, #ff9a8d, #ff6b5e);
+  color: #28100d;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.25);
+  opacity: 0.52;
+  transform: none;
+}
+
+/* ===================== FASE 7: MULTIPLAYER ===================== */
+
+#multiplayerButton {
+  background: linear-gradient(180deg, #84e8ff, #49bddd);
+  color: #06131c;
+  box-shadow: 0 6px 18px rgba(73, 189, 221, 0.28);
+}
+
+#musicButton[aria-pressed="true"] {
+  background: linear-gradient(180deg, #c89dff, #8b5cf6);
+  color: #0a0818;
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.30);
+}
+
+#multiplayerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 6, 12, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+#multiplayerOverlay.hidden,
+#multiplayerEntry.hidden,
+#multiplayerLobby.hidden {
+  display: none;
+}
+
+#multiplayerCard {
+  width: min(94vw, 520px);
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  padding: 24px;
+  border-radius: 22px;
+  border: 1px solid rgba(104, 200, 255, 0.30);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(104, 200, 255, 0.12), transparent 34%),
+    linear-gradient(160deg, rgba(24, 37, 58, 0.98), rgba(8, 15, 26, 0.98));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58);
+}
+
+.multiplayerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.multiplayerHeader h2 {
+  margin: 0;
+  color: var(--gold);
+  font-size: 22px;
+}
+
+#multiplayerStatus {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#multiplayerEntry {
+  display: grid;
+  gap: 12px;
+}
+
+.multiplayerField {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.multiplayerField input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(168, 187, 213, 0.24);
+  border-radius: 11px;
+  outline: none;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.055);
+  font: inherit;
+  font-size: 14px;
+}
+
+.multiplayerField input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(104, 200, 255, 0.12);
+}
+
+#roomCodeInput {
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  font-weight: 900;
+}
+
+.multiplayerDivider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.multiplayerDivider::before,
+.multiplayerDivider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.roomCodeBox {
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(233, 196, 106, 0.34);
+  background: rgba(233, 196, 106, 0.08);
+}
+
+.roomCodeBox span,
+.roomCodeBox small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+#roomCodeValue {
+  color: var(--gold);
+  font-size: 28px;
+  letter-spacing: 6px;
+}
+
+#lobbyPlayers {
+  display: grid;
+  gap: 8px;
+}
+
+.lobbyPlayer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.lobbyPlayer strong {
+  display: block;
+  font-size: 13px;
+}
+
+.lobbyPlayer small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.lobbyPlayerStatus {
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.lobbyPlayer.ready .lobbyPlayerStatus {
+  color: var(--green);
+}
+
+.lobbyPlayer.disconnected {
+  opacity: 0.55;
+}
+
+.multiplayerActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.multiplayerActions .danger {
+  grid-column: 1 / -1;
+}
+
+body.network-match #modeSelect,
+body.network-match #multiplayerButton {
+  display: none;
+}
+
 .shopArcanaGain {
   display: inline-block;
   padding: 2px 8px;
@@ -1220,5 +1493,17 @@ button.secondary {
 
   .shopActions button {
     width: 100%;
+  }
+
+  #multiplayerCard {
+    padding: 16px;
+  }
+
+  .multiplayerActions {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayerActions .danger {
+    grid-column: auto;
   }
 }

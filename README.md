@@ -6,7 +6,7 @@ externas.
 
 ## Estado atual
 
-O projeto está na versão **0.7.0** e consolidado até a **Fase 6**:
+O projeto está na versão **0.9.0** e está consolidado até a **Fase 8**:
 
 - Fase 0: arquitetura e protocolo documentados;
 - Fase 1: física e renderização local;
@@ -17,10 +17,15 @@ O projeto está na versão **0.7.0** e consolidado até a **Fase 6**:
   caçapas e áreas da mesa.
 - Fase 6: Bolas Mágicas com surgimento seguro, toque, coleta, expiração,
   recompensas por raridade e conversão automática.
+- Fase 7: salas com código, lobby para dois jogadores, prontidão, reconexão e
+  partidas clássicas com física, turno, pontuação e vitória autoritativos,
+  nomes reais no placar, apresentação interpolada e revanche aceita pelos dois.
+- Fase 8: Modo Arcano multiplayer completo, com economia privada, ativação dos
+  vinte especiais, seleção autoritativa de alvos, efeitos físicos sincronizados,
+  Rebobinar, Tempo Congelado e Bola Mágica em rede.
 
-O multiplayer autoritativo começa nas Fases 7 e 8. O transporte WebSocket e o
-protocolo já estão definidos, mas partidas em rede ainda não são anunciadas
-como recurso disponível.
+O multiplayer clássico e o Arcano estão disponíveis. Para criar uma sala
+Arcana, selecione **Modo Arcano** antes de abrir o Multiplayer.
 
 ## Como executar
 
@@ -38,6 +43,10 @@ npm start
 
 Abra `http://localhost:5201`. A porta `5200` permanece reservada ao portal.
 
+Para testar o multiplayer, abra o jogo em dois navegadores ou duas janelas,
+clique em **Multiplayer**, crie a sala na primeira janela e entre com o código
+na segunda. Os dois jogadores devem marcar prontidão; o anfitrião inicia.
+
 O servidor também expõe:
 
 - `GET /api/health` para diagnóstico;
@@ -46,10 +55,12 @@ O servidor também expõe:
 ## Controles locais
 
 - Mouse ou toque: mirar;
+- antes da primeira tacada, arrastar a bola branca para cima ou para baixo;
 - clicar/tocar e arrastar: definir força;
 - `Esc`: cancelar a preparação ou fechar a loja;
 - `L`: abrir/fechar a Loja Arcana;
 - `R`: iniciar uma nova partida;
+- `Música`: liga ou desliga a trilha ambiente, que começa desativada;
 - painel da bola branca: aplicar top spin, back spin e efeito lateral.
 - botão `Usar` no inventário: armar um especial antes da tacada;
 - Caçapa Dourada e Ímã Leve: depois de usar, clicar na caçapa desejada;
@@ -98,6 +109,6 @@ O servidor também expõe:
 
 ## Limites desta entrega
 
-- IA e multiplayer completo pertencem às fases posteriores.
+- IA pertence à Fase 9;
 - A validação ampla de balanceamento e combinações fica para a etapa de testes
   de produto; esta entrega recebe apenas verificação técnica mínima.

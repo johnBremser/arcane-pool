@@ -26,6 +26,10 @@
     power: 0
   };
 
+  const breakPlacement = {
+    active: false
+  };
+
   const spin = {
     x: 0,
     y: 0
@@ -48,10 +52,24 @@
 
   let accumulator = 0;
   let lastTime = performance.now();
+  let networkPhysicsTarget = null;
 
   const dom = {};
 
   const game = Rules.createMatch("classic", Date.now());
+
+  const networkMatch = {
+    active: false,
+    seat: null,
+    roomCode: null,
+    sendShot: null,
+    sendCommand: null,
+    freezeActive: false,
+    freezeAngle: 0,
+    lastFreezeDirectionAt: 0,
+    requestRematch: null,
+    leave: null
+  };
 
   const KEY_ACTIONS = new Map([
     ["Escape", "cancel"],
@@ -86,10 +104,8 @@
 
   function init() {
     cacheDom();
-    if (window.matchMedia("(max-width: 600px)").matches) {
-      dom.spinPanel.classList.add("collapsed");
-      dom.spinToggle.setAttribute("aria-expanded", "false");
-    }
+    setHudPanelCollapsed(dom.spinPanel, dom.spinToggle, true);
+    setHudPanelCollapsed(dom.inventoryPanel, dom.inventoryToggle, true);
     initParticles();
 
     Physics.init();
@@ -109,7 +125,7 @@
     setMode("classic");
     updateScoreboard();
     updateTurnUI();
-    setStateLabel("Sua vez");
+    setStateLabel("Arraste a branca ↕ antes da saída");
 
     lastTime = performance.now();
     requestAnimationFrame(frame);
@@ -119,6 +135,7 @@
     dom.canvas = document.getElementById("gameCanvas");
     dom.resetButton = document.getElementById("resetButton");
     dom.audioButton = document.getElementById("audioButton");
+    dom.musicButton = document.getElementById("musicButton");
     dom.turnLabel = document.getElementById("turnLabel");
     dom.stateLabel = document.getElementById("stateLabel");
     dom.forceFill = document.getElementById("forceFill");
@@ -141,6 +158,8 @@
     dom.gameOverReason = document.getElementById("gameOverReason");
     dom.gameOverScores = document.getElementById("gameOverScores");
     dom.gameOverButton = document.getElementById("gameOverButton");
+    dom.gameOverExitButton = document.getElementById("gameOverExitButton");
+    dom.gameOverRematchStatus = document.getElementById("gameOverRematchStatus");
     dom.modeSelect = document.getElementById("modeSelect");
     dom.shopButton = document.getElementById("shopButton");
     dom.shopOverlay = document.getElementById("shopOverlay");
@@ -151,6 +170,8 @@
     dom.shopCloseButton = document.getElementById("shopCloseButton");
     dom.rerollCostValue = document.getElementById("rerollCostValue");
     dom.inventoryPanel = document.getElementById("inventoryPanel");
+    dom.inventoryToggle = document.getElementById("inventoryToggle");
+    dom.inventoryCount = document.getElementById("inventoryCount");
     dom.inventorySlots = document.getElementById("inventorySlots");
     dom.activeEffectsPanel = document.getElementById("activeEffectsPanel");
     dom.magicBallPanel = document.getElementById("magicBallPanel");
@@ -209,6 +230,10 @@
     dom.resetButton.addEventListener("click", () => {
       AudioSys.ensure();
       AudioSys.playClick();
+      if (networkMatch.active && networkMatch.leave) {
+        networkMatch.leave();
+        return;
+      }
       startNewMatch();
     });
 
@@ -218,6 +243,17 @@
       if (ok) AudioSys.playClick();
     });
 
+    dom.musicButton.addEventListener("click", () => {
+      const shouldEnable = !AudioSys.isAmbientEnabled();
+      const enabled = AudioSys.setAmbient(shouldEnable);
+      dom.musicButton.setAttribute("aria-pressed", String(enabled));
+      dom.musicButton.textContent = enabled ? "Música: ligada" : "Música: desligada";
+      if (AudioSys.isEnabled()) {
+        dom.audioButton.textContent = "Som: ligado";
+        AudioSys.playClick();
+      }
+    });
+
     dom.spinReset.addEventListener("click", () => {
       AudioSys.ensure();
       AudioSys.playClick();
@@ -225,8 +261,21 @@
     });
 
     dom.spinToggle.addEventListener("click", () => {
-      const collapsed = dom.spinPanel.classList.toggle("collapsed");
-      dom.spinToggle.setAttribute("aria-expanded", String(!collapsed));
+      setHudPanelCollapsed(
+        dom.spinPanel,
+        dom.spinToggle,
+        !dom.spinPanel.classList.contains("collapsed")
+      );
+      AudioSys.ensure();
+      AudioSys.playClick();
+    });
+
+    dom.inventoryToggle.addEventListener("click", () => {
+      setHudPanelCollapsed(
+        dom.inventoryPanel,
+        dom.inventoryToggle,
+        !dom.inventoryPanel.classList.contains("collapsed")
+      );
       AudioSys.ensure();
       AudioSys.playClick();
     });
@@ -234,8 +283,19 @@
     dom.gameOverButton.addEventListener("click", () => {
       AudioSys.ensure();
       AudioSys.playClick();
+      if (networkMatch.active && networkMatch.requestRematch) {
+        const result = networkMatch.requestRematch();
+        if (!result || !result.ok) showToast("Não foi possível pedir a revanche", "error");
+        return;
+      }
       hideGameOver();
       startNewMatch();
+    });
+
+    dom.gameOverExitButton.addEventListener("click", () => {
+      AudioSys.ensure();
+      AudioSys.playClick();
+      if (networkMatch.active && networkMatch.leave) networkMatch.leave();
     });
 
     dom.modeSelect.addEventListener("change", (e) => {
@@ -253,7 +313,8 @@
     dom.shopCloseButton.addEventListener("click", () => {
       AudioSys.ensure();
       AudioSys.playClick();
-      closeShop();
+      if (networkMatch.active) toggleShop();
+      else closeShop();
     });
 
     dom.shopRerollButton.addEventListener("click", () => {
@@ -354,6 +415,24 @@
   function onCanvasPointerMove(e) {
     updateMouse(e);
 
+    if (networkMatch.active && networkMatch.freezeActive && networkMatch.seat === game.currentSeat) {
+      const cue = Physics.getCueBall();
+      if (cue) {
+        networkMatch.freezeAngle = Math.atan2(mouse.y - cue.y, mouse.x - cue.x);
+        const now = performance.now();
+        if (now - networkMatch.lastFreezeDirectionAt >= 45) {
+          networkMatch.lastFreezeDirectionAt = now;
+          networkMatch.sendCommand("set_frozen_direction", { angle: networkMatch.freezeAngle });
+        }
+      }
+      return;
+    }
+
+    if (breakPlacement.active) {
+      updateOpeningCuePosition();
+      return;
+    }
+
     const freeze = Physics.getTimeFreezeState();
     if (freeze && freeze.active) {
       const cue = Physics.getCueBall();
@@ -381,6 +460,11 @@
 
     updateMouse(e);
 
+    if (networkMatch.active && networkMatch.freezeActive && networkMatch.seat === game.currentSeat) {
+      networkMatch.sendCommand("release_time_freeze");
+      return;
+    }
+
     const freeze = Physics.getTimeFreezeState();
     if (freeze && freeze.active) {
       Physics.releaseTimeFreeze();
@@ -389,6 +473,19 @@
 
     if (pendingSpecialTarget) {
       selectPendingSpecialTarget();
+      return;
+    }
+
+    const cue = Physics.getCueBall();
+    if (
+      canPlaceOpeningCue() &&
+      cue &&
+      Math.hypot(mouse.x - cue.x, mouse.y - cue.y) <= cue.radius * 2.2
+    ) {
+      breakPlacement.active = true;
+      updateOpeningCuePosition();
+      setStateLabel("Posicionando a branca para a saída");
+      if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
       return;
     }
 
@@ -407,9 +504,40 @@
   }
 
   function onCanvasPointerUp() {
+    if (breakPlacement.active) {
+      breakPlacement.active = false;
+      updateAimAngle();
+      setStateLabel("Branca posicionada — mire para a saída");
+      return;
+    }
+
     if (!drag.active) return;
 
     if (drag.power >= CONFIG.input.minPower) {
+      const openingBreak = isOpeningBreak();
+      const cue = Physics.getCueBall();
+      if (networkMatch.active) {
+        const request = networkMatch.sendShot && networkMatch.sendShot({
+          direction: {
+            x: Math.cos(drag.angle),
+            y: Math.sin(drag.angle)
+          },
+          power: drag.power,
+          spin: { ...spin },
+          cueY: openingBreak && cue ? cue.y : null
+        });
+
+        if (request && request.ok) {
+          shotActive = true;
+          setStateLabel("Aguardando servidor");
+          AudioSys.playShot(drag.power);
+        } else {
+          setStateLabel("Falha ao enviar tacada");
+        }
+        cancelDrag();
+        return;
+      }
+
       currentShotStart = {
         match: JSON.parse(JSON.stringify(game)),
         physics: Physics.getSnapshot(),
@@ -442,7 +570,12 @@
           : null
       });
 
-      const ok = Physics.shoot(drag.angle, prepared.power, prepared.spin);
+      const ok = Physics.shoot(
+        drag.angle,
+        prepared.power,
+        prepared.spin,
+        { openingBreak }
+      );
 
       if (ok) {
         currentShotEffects = prepared.effects;
@@ -450,6 +583,7 @@
         Rules.pauseTurnTimer(game, Date.now());
         setStateLabel("Simulando");
         AudioSys.playShot(prepared.power);
+        AudioSys.playArcaneShot(Object.keys(prepared.effects));
         showPreparedShotNotices(prepared.notices);
         updateInventoryUI();
         updateActiveEffectsUI();
@@ -464,6 +598,12 @@
 
   function onCanvasPointerLeave() {
     mouse.inside = false;
+
+    if (breakPlacement.active) {
+      breakPlacement.active = false;
+      setStateLabel("Branca posicionada — mire para a saída");
+      return;
+    }
 
     if (!drag.active) {
       return;
@@ -500,10 +640,32 @@
     drag.power = 0;
   }
 
+  function isOpeningBreak() {
+    return Boolean(
+      game.phase === "playing" &&
+      game.turn &&
+      game.turn.number === 1 &&
+      game.turn.shotNumber === 1
+    );
+  }
+
+  function canPlaceOpeningCue() {
+    return isOpeningBreak() && canShoot();
+  }
+
+  function updateOpeningCuePosition() {
+    const cue = Physics.getCueBall();
+    if (!cue) return false;
+    const padding = CONFIG.input.openingBreak.cueVerticalPadding;
+    const y = clamp(mouse.y, padding, CONFIG.table.height - padding);
+    return Physics.moveCueTo(cue.x, y);
+  }
+
   function canShoot() {
     if (game.phase !== "playing") return false;
     if (shotActive) return false;
     if (pendingSpecialTarget) return false;
+    if (networkMatch.active && networkMatch.seat !== game.currentSeat) return false;
     const currentPlayer = game.players[game.currentSeat - 1];
     if (currentPlayer.shop.open) return false;
     const cue = Physics.getCueBall();
@@ -514,6 +676,7 @@
     Rules.resetMatch(game, game.mode, Date.now());
 
     Physics.reset();
+    breakPlacement.active = false;
     shotActive = false;
     currentShotEffects = {};
     pendingSpecialTarget = null;
@@ -536,7 +699,522 @@
     updateInventoryUI();
     updateActiveEffectsUI();
     updateMagicBallUI();
-    setStateLabel("Sua vez");
+    setStateLabel("Arraste a branca ↕ antes da saída");
+  }
+
+  function applyNetworkMatchSnapshot(snapshot) {
+    if (!snapshot) return;
+
+    game.mode = snapshot.mode === "arcane" ? "arcane" : "classic";
+    game.phase = snapshot.phase || "playing";
+    game.currentSeat = Number(snapshot.currentSeat) || 1;
+    game.winnerSeat = snapshot.winnerSeat || null;
+    game.gameEndReason = snapshot.gameEndReason || "";
+    game.zones = Array.isArray(snapshot.zones)
+      ? JSON.parse(JSON.stringify(snapshot.zones))
+      : [];
+    game.magicBall = snapshot.magicBall
+      ? JSON.parse(JSON.stringify(snapshot.magicBall))
+      : null;
+
+    if (snapshot.turn) {
+      const remainingMs = Math.max(0, Number(snapshot.turn.remainingMs) || 0);
+      game.turn = {
+        number: snapshot.turn.number,
+        seat: snapshot.turn.seat,
+        shotNumber: snapshot.turn.shotNumber,
+        doubleShotLimited: false,
+        timer: {
+          durationMs: CONFIG.turn.durationMs,
+          remainingMs,
+          deadlineAt: Date.now() + remainingMs,
+          paused: false
+        }
+      };
+    }
+
+    for (const source of snapshot.players || []) {
+      const player = game.players[source.seat - 1];
+      if (!player) continue;
+      player.name = source.name;
+      player.score = source.score;
+      player.arcanaPoints = Number(source.arcanaPoints) || 0;
+      player.shop.open = Boolean(source.shopOpen);
+      for (const publicDefId of ["pressure", "double_shot"]) {
+        if (!(source.visibleEffects || []).includes(publicDefId)) {
+          delete player.activeEffects[publicDefId];
+        }
+      }
+      for (const defId of source.visibleEffects || []) {
+        if (player.activeEffects[defId]) continue;
+        const definition = Specials.getById(defId);
+        if (definition) {
+          player.activeEffects[defId] = {
+            defId,
+            name: definition.name,
+            icon: definition.icon,
+            sourceSeat: null,
+            target: null
+          };
+        }
+      }
+    }
+
+    syncNetworkModeUI();
+    updateScoreboard();
+    updateTurnUI();
+    updateMagicBallUI();
+  }
+
+  function getHudPlayer() {
+    const seat = networkMatch.active ? networkMatch.seat : game.currentSeat;
+    return game.players.find((player) => player.seat === seat) || game.players[0];
+  }
+
+  function syncNetworkModeUI() {
+    if (!networkMatch.active) return;
+    const arcane = game.mode === "arcane";
+    dom.modeSelect.value = game.mode;
+    dom.shopButton.classList.toggle("hidden", !arcane);
+    dom.inventoryPanel.classList.toggle("hidden", !arcane);
+    document.querySelectorAll(".playerArcana").forEach((element) => {
+      element.classList.toggle("hidden", !arcane);
+    });
+    updateInventoryUI();
+    updateActiveEffectsUI();
+  }
+
+  function setNetworkPhysicsSnapshot(snapshot, moving) {
+    if (!Array.isArray(snapshot)) return;
+
+    const localBalls = Physics.getBalls();
+    const localIds = new Set(localBalls.map((ball) => ball.id));
+    const sameStructure = localBalls.length === snapshot.length && snapshot.every(
+      (source) => localIds.has(Number(source.id))
+    );
+
+    if (!moving || !sameStructure) {
+      Physics.loadSnapshot(snapshot);
+      networkPhysicsTarget = null;
+      return;
+    }
+
+    const targets = new Map(snapshot.map((source) => [Number(source.id), source]));
+    for (const ball of localBalls) {
+      const source = targets.get(ball.id);
+      if (!source) continue;
+
+      const sourceActive = source.active !== false;
+      if (ball.active !== sourceActive) {
+        ball.x = Number(source.x);
+        ball.y = Number(source.y);
+      }
+      ball.active = sourceActive;
+      ball.pocketed = source.pocketed === true;
+      ball.vx = Number(source.vx) || 0;
+      ball.vy = Number(source.vy) || 0;
+      ball.spinX = Number(source.spinX) || 0;
+      ball.spinY = Number(source.spinY) || 0;
+    }
+
+    networkPhysicsTarget = {
+      receivedAt: performance.now(),
+      balls: targets
+    };
+  }
+
+  function updateNetworkPhysics(dt) {
+    if (!networkMatch.active || !shotActive || !networkPhysicsTarget) return;
+
+    const elapsed = Math.min(0.045, (performance.now() - networkPhysicsTarget.receivedAt) / 1000);
+    const blend = 1 - Math.exp(-28 * dt);
+
+    for (const ball of Physics.getBalls()) {
+      const target = networkPhysicsTarget.balls.get(ball.id);
+      if (!target || !ball.active || target.active === false) continue;
+
+      const targetX = Number(target.x) + (Number(target.vx) || 0) * elapsed;
+      const targetY = Number(target.y) + (Number(target.vy) || 0) * elapsed;
+      const distance = Math.hypot(targetX - ball.x, targetY - ball.y);
+
+      ball.prevX = ball.x;
+      ball.prevY = ball.y;
+      if (distance > 90) {
+        ball.x = targetX;
+        ball.y = targetY;
+      } else {
+        ball.x += (targetX - ball.x) * blend;
+        ball.y += (targetY - ball.y) * blend;
+      }
+      ball.rotation += ((Number(target.rotation) || 0) - ball.rotation) * blend;
+    }
+  }
+
+  function enterMultiplayer(options) {
+    networkMatch.active = true;
+    networkMatch.seat = Number(options.seat) || null;
+    networkMatch.roomCode = options.roomCode || null;
+    networkMatch.sendShot = options.sendShot;
+    networkMatch.sendCommand = options.sendCommand;
+    networkMatch.freezeActive = false;
+    networkMatch.freezeAngle = 0;
+    networkMatch.lastFreezeDirectionAt = 0;
+    networkMatch.requestRematch = options.requestRematch;
+    networkMatch.leave = options.leave;
+    networkPhysicsTarget = null;
+
+    document.body.classList.add("network-match");
+    dom.modeSelect.disabled = true;
+    dom.resetButton.textContent = "Sair da sala";
+    dom.gameOverExitButton.classList.remove("hidden");
+    dom.gameOverRematchStatus.classList.add("hidden");
+    dom.gameOverButton.disabled = false;
+    hideGameOver();
+    cancelDrag();
+    clearParticles();
+    currentShotEffects = {};
+    pendingSpecialTarget = null;
+    shotActive = Boolean(options.moving);
+
+    applyNetworkMatchSnapshot(options.match);
+    if (options.privatePlayer) applyMultiplayerPrivateState(options.privatePlayer);
+    if (Array.isArray(options.physics)) Physics.loadSnapshot(options.physics);
+    setStateLabel(
+      networkMatch.seat === game.currentSeat
+        ? (isOpeningBreak() ? "Arraste a branca ↕ antes da saída" : "Sua vez online")
+        : "Vez do adversário"
+    );
+  }
+
+  function applyMultiplayerPhysics(payload) {
+    if (!networkMatch.active || !payload) return;
+    if (Array.isArray(payload.physics)) {
+      setNetworkPhysicsSnapshot(payload.physics, Boolean(payload.moving));
+    }
+    if (payload.match) applyNetworkMatchSnapshot(payload.match);
+    if (payload.privatePlayer) applyMultiplayerPrivateState(payload.privatePlayer);
+    shotActive = Boolean(payload.moving);
+    if (shotActive) setStateLabel("Tacada em andamento");
+  }
+
+  function applyMultiplayerPlayers(payload) {
+    if (!networkMatch.active || !payload || !Array.isArray(payload.players)) return;
+    for (const source of payload.players) {
+      const player = game.players.find((item) => item.seat === Number(source.seat));
+      if (!player) continue;
+      if (typeof source.name === "string") player.name = source.name;
+      if (Number.isFinite(Number(source.score))) player.score = Number(source.score);
+      if (Number.isFinite(Number(source.arcanaPoints))) {
+        player.arcanaPoints = Number(source.arcanaPoints);
+      }
+      if (typeof source.shopOpen === "boolean") player.shop.open = source.shopOpen;
+    }
+    updateScoreboard();
+    updateInventoryUI();
+    if (getHudPlayer().shop.open) renderShop();
+  }
+
+  function applyMultiplayerPrivateState(payload) {
+    if (!networkMatch.active || !payload) return;
+    const privatePlayer = payload.privatePlayer || payload;
+    const player = game.players.find((item) => item.seat === Number(privatePlayer.seat));
+    if (!player || player.seat !== networkMatch.seat) return;
+
+    player.arcanaPoints = Number(privatePlayer.arcanaPoints) || 0;
+    player.inventory = Array.isArray(privatePlayer.inventory)
+      ? JSON.parse(JSON.stringify(privatePlayer.inventory))
+      : player.inventory;
+    player.shop.offers = Array.isArray(privatePlayer.shopOffers)
+      ? JSON.parse(JSON.stringify(privatePlayer.shopOffers))
+      : player.shop.offers;
+    player.shop.open = Boolean(privatePlayer.shopOpen);
+    player.boughtHistory = privatePlayer.boughtHistory
+      ? Object.assign({}, privatePlayer.boughtHistory)
+      : player.boughtHistory;
+    player.activeEffects = privatePlayer.activeEffects
+      ? JSON.parse(JSON.stringify(privatePlayer.activeEffects))
+      : player.activeEffects;
+    player.legendaryPurchased = Boolean(privatePlayer.legendaryPurchased);
+
+    updateScoreboard();
+    updateInventoryUI();
+    updateActiveEffectsUI();
+    if (player.shop.open) renderShop();
+  }
+
+  function applyMultiplayerShopOpened(payload) {
+    if (!networkMatch.active || !payload) return;
+    const player = game.players.find((item) => item.seat === Number(payload.seat));
+    if (!player) return;
+    player.shop.open = true;
+    if (game.turn && game.turn.timer) {
+      game.turn.timer.remainingMs = Math.max(0, Number(payload.remainingMs) || 0);
+      game.turn.timer.deadlineAt = null;
+      game.turn.timer.paused = true;
+    }
+    if (player.seat !== networkMatch.seat) {
+      setStateLabel(`${player.name} está na Loja Arcana`);
+    }
+  }
+
+  function applyMultiplayerShopClosed(payload) {
+    if (!networkMatch.active || !payload) return;
+    const player = game.players.find((item) => item.seat === Number(payload.seat));
+    if (player) player.shop.open = false;
+    if (game.turn && game.turn.timer) {
+      const remainingMs = Math.max(0, Number(payload.remainingMs) || game.turn.timer.remainingMs || 0);
+      game.turn.timer.remainingMs = remainingMs;
+      game.turn.timer.deadlineAt = Date.now() + remainingMs;
+      game.turn.timer.paused = false;
+    }
+    if (Number(payload.seat) === networkMatch.seat) {
+      dom.shopOverlay.classList.add("hidden");
+    }
+    updateInventoryUI();
+    setStateLabel(networkMatch.seat === game.currentSeat ? "Sua vez online" : "Vez do adversário");
+  }
+
+  function applyMultiplayerShopState(payload) {
+    if (!networkMatch.active) return;
+    applyMultiplayerPrivateState(payload);
+    dom.shopOverlay.classList.remove("hidden");
+    AudioSys.playShopOpen();
+    renderShop();
+    setStateLabel("Loja aberta");
+  }
+
+  function applyMultiplayerShopRerolled(payload) {
+    if (!networkMatch.active || !payload) return;
+    applyMultiplayerPrivateState(payload);
+    AudioSys.playReroll();
+    showToast(`Loja rolada por ${Number(payload.cost) || CONFIG.arcane.rerollCost} ✦`, "info");
+    renderShop();
+  }
+
+  function applyMultiplayerSpecialBought(payload) {
+    if (!networkMatch.active || !payload) return;
+    applyMultiplayerPrivateState(payload);
+    AudioSys.playBuy();
+    showToast(`${payload.instance ? payload.instance.name : "Especial"} comprado!`, "success");
+    renderShop();
+  }
+
+  function applyMultiplayerSpecialDiscarded(payload) {
+    if (!networkMatch.active || !payload) return;
+    applyMultiplayerPrivateState(payload);
+    AudioSys.playDiscard();
+    showToast(`${payload.name || "Especial"} descartado`, "info");
+    if (getHudPlayer().shop.open) renderShop();
+  }
+
+  function applyMultiplayerSpecialUsed(payload) {
+    if (!networkMatch.active || !payload) return;
+    applyMultiplayerPrivateState(payload);
+    updateInventoryUI();
+    updateActiveEffectsUI();
+  }
+
+  function applyMultiplayerSpecialEffectStarted(payload) {
+    if (!networkMatch.active || !payload || !payload.effect) return;
+    if (payload.match) applyNetworkMatchSnapshot(payload.match);
+    if (Array.isArray(payload.physics)) setNetworkPhysicsSnapshot(payload.physics, false);
+
+    const effect = payload.effect;
+    const appliedPlayer = game.players.find((player) => player.seat === Number(payload.appliedToSeat));
+    if (appliedPlayer && !payload.immediate && !["ice_zone", "sticky_zone"].includes(effect.defId)) {
+      appliedPlayer.activeEffects[effect.defId] = JSON.parse(JSON.stringify(effect));
+    }
+
+    AudioSys.playArcaneEffect(effect.defId);
+    const suffix = effect.defId === "pressure"
+      ? ` — ${appliedPlayer ? appliedPlayer.name : "adversário"} está sob pressão`
+      : (["ice_zone", "sticky_zone"].includes(effect.defId) ? " — zona criada" :
+        (effect.defId === "rewind" ? " — jogada desfeita" : " — efeito armado"));
+    showToast(`${effect.name}${suffix}`, "arcana");
+    updateInventoryUI();
+    updateActiveEffectsUI();
+    if (payload.immediate) setStateLabel(effect.defId === "rewind" ? "Jogada rebobinada" : "Mesa alterada");
+  }
+
+  function applyMultiplayerSpecialEffectFinished(payload) {
+    if (!networkMatch.active || !payload || !payload.defId) return;
+    for (const player of game.players) delete player.activeEffects[payload.defId];
+    updateActiveEffectsUI();
+  }
+
+  function applyMultiplayerSpecialPhysicsEvent(payload) {
+    if (!networkMatch.active || !payload) return;
+    const eventType = payload.eventType;
+    if (eventType === "time_freeze_started") {
+      networkMatch.freezeActive = Number(payload.shooterSeat) === networkMatch.seat;
+      const cue = Physics.getCueBall();
+      networkMatch.freezeAngle = cue ? Math.atan2(cue.vy, cue.vx) : aim.angle;
+    } else if (eventType === "time_freeze_finished") {
+      networkMatch.freezeActive = false;
+    }
+    onSpecialPhysicsEvent(eventType, payload.detail || {});
+  }
+
+  function applyMultiplayerArcaneEvent(eventType, payload) {
+    if (!networkMatch.active || !payload) return;
+    if (eventType === "arcane_ball_spawned") {
+      game.magicBall = JSON.parse(JSON.stringify(payload));
+      const ball = Physics.getMagicBall() || Physics.addMagicBall(payload);
+      if (ball) spawnParticles(ball.x, ball.y, ball.color, 44, 180);
+      const rarityName = Specials.RARITY_NAMES[payload.rarity] || payload.rarity;
+      showToast(`Uma Bola Mágica ${rarityName} surgiu!`, "arcana");
+      AudioSys.playArcaneEffect("arcane_ball_spawned");
+    } else if (eventType === "arcane_ball_touched") {
+      if (game.magicBall) game.magicBall.touched = true;
+      const ball = Physics.getMagicBall();
+      if (ball) spawnParticles(ball.x, ball.y, ball.color, 38, 230);
+      showToast(`${game.players[Number(payload.seat) - 1].name}: +${payload.arcanaGranted} ✦ pela Bola Mágica`, "arcana");
+      AudioSys.playArcaneEffect("magic_ball_touch");
+    } else if (eventType === "arcane_ball_potted") {
+      Physics.removeMagicBall(payload.id);
+      game.magicBall = null;
+      AudioSys.playArcaneEffect("arcane_ball_potted");
+    } else if (eventType === "arcane_ball_expired") {
+      Physics.removeMagicBall(payload.id);
+      game.magicBall = null;
+      showToast("A Bola Mágica expirou", "info");
+      AudioSys.playArcaneEffect("arcane_ball_expired");
+    } else if (eventType === "arcane_reward_granted") {
+      showToast(`${payload.reward.name} recebido por ${game.players[Number(payload.seat) - 1].name}!`, "success");
+      AudioSys.playArcaneEffect("magic_reward");
+    } else if (eventType === "arcane_reward_converted") {
+      showToast(`${payload.reward.name} convertido em ${payload.arcanaGranted} ✦`, "arcana");
+      AudioSys.playArcanaGain();
+    }
+    updateMagicBallUI();
+    updateScoreboard();
+    updateInventoryUI();
+  }
+
+  function applyMultiplayerShotAccepted(payload = {}) {
+    if (!networkMatch.active) return;
+    shotActive = true;
+    currentShotEffects = payload.effects ? JSON.parse(JSON.stringify(payload.effects)) : {};
+    networkMatch.freezeActive = false;
+    AudioSys.playArcaneShot(payload.effectIds || []);
+    showPreparedShotNotices(payload.notices || []);
+    updateInventoryUI();
+    updateActiveEffectsUI();
+    setStateLabel("Tacada em andamento");
+  }
+
+  function setMultiplayerShotActive(active) {
+    if (!networkMatch.active) return;
+    shotActive = Boolean(active);
+    if (shotActive) setStateLabel("Tacada em andamento");
+  }
+
+  function applyMultiplayerTurn(payload) {
+    if (!networkMatch.active || !payload) return;
+    if (payload.match) applyNetworkMatchSnapshot(payload.match);
+    shotActive = false;
+    networkMatch.freezeActive = false;
+    cancelDrag();
+    updateInventoryUI();
+    if (payload.reason === "timeout") {
+      showToast("Tempo esgotado: turno alterado pelo servidor", "error");
+    }
+    setStateLabel(
+      networkMatch.seat === game.currentSeat
+        ? (isOpeningBreak() ? "Arraste a branca ↕ antes da saída" : "Sua vez online")
+        : "Vez do adversário"
+    );
+  }
+
+  function applyMultiplayerShotResult(payload) {
+    if (!networkMatch.active || !payload) return;
+    if (Array.isArray(payload.physics)) setNetworkPhysicsSnapshot(payload.physics, false);
+    if (payload.match) applyNetworkMatchSnapshot(payload.match);
+    shotActive = false;
+
+    const outcome = payload.outcome || {};
+    for (const scoreEvent of outcome.scoreEvents || []) {
+      showToast(
+        `Bola ${scoreEvent.ballNumber}: +${scoreEvent.points} (${scoreEvent.type})`,
+        "success"
+      );
+    }
+    if (outcome.scoreEvents && outcome.scoreEvents.length > 0) AudioSys.playScore();
+    if (outcome.foul) {
+      showToast(`Falta: ${outcome.foulReason}`, "error");
+      AudioSys.playFoul();
+    }
+    for (const arcanaEvent of outcome.arcanaEvents || []) {
+      const owner = game.players[Number(arcanaEvent.seat) - 1];
+      showToast(`${owner.name}: +${arcanaEvent.amount} ✦ — ${arcanaEvent.reason}`, "arcana");
+    }
+    if ((outcome.arcanaEvents || []).length > 0) AudioSys.playArcanaGain();
+    if (outcome.doubleShotGranted) {
+      showToast("Tacada Dupla ativada: jogue novamente!", "arcana");
+      AudioSys.playArcaneEffect("double_shot");
+    }
+    currentShotEffects = {};
+    networkMatch.freezeActive = false;
+  }
+
+  function finishMultiplayer(payload) {
+    if (!networkMatch.active || !payload) return;
+    if (Array.isArray(payload.physics)) setNetworkPhysicsSnapshot(payload.physics, false);
+    if (payload.match) applyNetworkMatchSnapshot(payload.match);
+    shotActive = false;
+
+    const winner = game.players.find((player) => player.seat === payload.winnerSeat);
+    const loser = game.players.find((player) => player.seat !== payload.winnerSeat);
+    if (winner && loser) {
+      AudioSys.playWin();
+      showGameOver(winner, loser, payload.reason || game.gameEndReason);
+      const lost = networkMatch.seat !== payload.winnerSeat;
+      dom.gameOverButton.textContent = lost ? "Pedir revanche" : "Aguardando revanche";
+      dom.gameOverButton.disabled = !lost;
+      dom.gameOverExitButton.classList.remove("hidden");
+      dom.gameOverRematchStatus.textContent = lost
+        ? "A revanche começa quando o adversário aceitar."
+        : "O adversário pode pedir uma revanche.";
+      dom.gameOverRematchStatus.classList.remove("hidden");
+    }
+  }
+
+  function applyMultiplayerRematchState(payload) {
+    if (!networkMatch.active || !payload) return;
+    const acceptedSeats = Array.isArray(payload.acceptedSeats) ? payload.acceptedSeats : [];
+    const localAccepted = acceptedSeats.includes(networkMatch.seat);
+    const requester = game.players.find((player) => player.seat === payload.requestedBySeat);
+
+    dom.gameOverButton.disabled = localAccepted;
+    dom.gameOverButton.textContent = localAccepted ? "Aguardando adversário…" : "Aceitar revanche";
+    dom.gameOverRematchStatus.textContent = requester
+      ? `${requester.name} pediu revanche — falta a confirmação do outro jogador.`
+      : "Aguardando confirmação para a revanche.";
+    dom.gameOverRematchStatus.classList.remove("hidden");
+  }
+
+  function leaveMultiplayer() {
+    networkMatch.active = false;
+    networkMatch.seat = null;
+    networkMatch.roomCode = null;
+    networkMatch.sendShot = null;
+    networkMatch.sendCommand = null;
+    networkMatch.freezeActive = false;
+    networkMatch.freezeAngle = 0;
+    networkMatch.lastFreezeDirectionAt = 0;
+    networkMatch.requestRematch = null;
+    networkMatch.leave = null;
+    networkPhysicsTarget = null;
+    document.body.classList.remove("network-match");
+    dom.modeSelect.disabled = false;
+    dom.modeSelect.value = "classic";
+    dom.resetButton.textContent = "Nova partida";
+    dom.gameOverButton.textContent = "Nova partida";
+    dom.gameOverButton.disabled = false;
+    dom.gameOverExitButton.classList.add("hidden");
+    dom.gameOverRematchStatus.classList.add("hidden");
+    setMode("classic");
+    startNewMatch();
   }
 
   function calculateIdealPower(angle) {
@@ -620,9 +1298,14 @@
 
     accumulator += frameDt;
 
-    while (accumulator >= CONFIG.physics.fixedDt) {
-      Physics.step(CONFIG.physics.fixedDt);
-      accumulator -= CONFIG.physics.fixedDt;
+    if (networkMatch.active) {
+      accumulator = 0;
+      updateNetworkPhysics(frameDt);
+    } else {
+      while (accumulator >= CONFIG.physics.fixedDt) {
+        Physics.step(CONFIG.physics.fixedDt);
+        accumulator -= CONFIG.physics.fixedDt;
+      }
     }
 
     updateGame(frameDt);
@@ -654,7 +1337,7 @@
       magicTrailAccumulator = 0;
     }
 
-    if (shotActive && !Physics.ballsMoving()) {
+    if (!networkMatch.active && shotActive && !Physics.ballsMoving()) {
       shotActive = false;
       resolveShot();
     }
@@ -677,6 +1360,8 @@
 
     dom.shotTimer.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
     dom.shotTimer.classList.toggle("warning", remainingMs <= CONFIG.turn.warningMs);
+
+    if (networkMatch.active) return;
 
     const currentPlayer = game.players[game.currentSeat - 1];
     if (
@@ -768,6 +1453,7 @@
     );
 
     AudioSys.playPocket();
+    AudioSys.playBallReturn(ball.kind);
   }
 
   function onShot() {}
@@ -800,7 +1486,7 @@
     } else {
       return;
     }
-    AudioSys.playSpecial();
+    AudioSys.playArcaneEffect(type);
   }
 
   function resolveShot() {
@@ -864,7 +1550,7 @@
     }
 
     if (outcome.doubleShotGranted) {
-      AudioSys.playSpecial();
+      AudioSys.playArcaneEffect("double_shot");
       showToast("Tacada Dupla ativada: jogue novamente!", "arcana");
       setStateLabel("Tacada extra");
       messageUntil = performance.now() + 1800;
@@ -921,17 +1607,20 @@
         if (ball) spawnParticles(ball.x, ball.y, ball.color, 44, 180);
         const rarityName = Specials.RARITY_NAMES[payload.rarity] || payload.rarity;
         showToast(`Uma Bola Mágica ${rarityName} surgiu!`, "arcana");
+        AudioSys.playArcaneEffect("arcane_ball_spawned");
       } else if (event.type === "arcane_ball_expired") {
         const ball = Physics.getMagicBall();
         if (ball) spawnParticles(ball.x, ball.y, ball.color, 34, 150);
         Physics.removeMagicBall(payload.id);
         showToast("A Bola Mágica expirou", "info");
+        AudioSys.playArcaneEffect("arcane_ball_expired");
       } else if (event.type === "arcane_ball_potted") {
         Physics.removeMagicBall(payload.id);
+        AudioSys.playArcaneEffect("arcane_ball_potted");
       } else if (event.type === "arcane_reward_granted") {
         const reward = payload.reward;
         showToast(`${reward.name} recebido no inventário!`, "success");
-        AudioSys.playSpecial();
+        AudioSys.playArcaneEffect("magic_reward");
       } else if (event.type === "arcane_reward_converted") {
         const reward = payload.reward;
         showToast(
@@ -993,6 +1682,13 @@
       </div>
     `;
 
+    if (!networkMatch.active) {
+      dom.gameOverButton.textContent = "Nova partida";
+      dom.gameOverButton.disabled = false;
+      dom.gameOverExitButton.classList.add("hidden");
+      dom.gameOverRematchStatus.classList.add("hidden");
+    }
+
     dom.gameOverOverlay.classList.remove("hidden");
   }
 
@@ -1008,8 +1704,13 @@
       if (!player) return;
 
       const scoreEl = card.querySelector(".playerScore");
+      const nameEl = card.querySelector(".playerName");
       const badgeEl = card.querySelector(".playerBadge");
       const arcanaEl = card.querySelector(".arcanaValue");
+
+      if (nameEl) {
+        nameEl.textContent = player.name;
+      }
 
       if (scoreEl) {
         scoreEl.textContent = player.score;
@@ -1056,7 +1757,20 @@
       return;
     }
 
-    const currentPlayer = game.players[game.currentSeat - 1];
+    const currentPlayer = getHudPlayer();
+
+    if (networkMatch.active) {
+      if (networkMatch.seat !== game.currentSeat) {
+        showToast("A loja só pode ser usada no seu turno", "error");
+        return;
+      }
+      if (shotActive || Physics.ballsMoving() || drag.active) {
+        showToast("Aguarde o fim da tacada para abrir a loja", "error");
+        return;
+      }
+      networkMatch.sendCommand(currentPlayer.shop.open ? "close_shop" : "open_shop");
+      return;
+    }
 
     if (currentPlayer.shop.open) {
       closeShop();
@@ -1084,6 +1798,11 @@
   }
 
   function closeShop() {
+    if (networkMatch.active) {
+      if (networkMatch.sendCommand) networkMatch.sendCommand("close_shop");
+      return;
+    }
+
     Rules.closeShop(game, Date.now());
     dom.shopOverlay.classList.add("hidden");
 
@@ -1093,6 +1812,11 @@
   }
 
   function rerollShop() {
+    if (networkMatch.active) {
+      networkMatch.sendCommand("reroll_shop");
+      return;
+    }
+
     const result = Rules.rerollShop(game);
 
     if (!result.ok) {
@@ -1110,7 +1834,7 @@
   }
 
   function renderShop() {
-    const currentPlayer = game.players[game.currentSeat - 1];
+    const currentPlayer = getHudPlayer();
     const offers = currentPlayer.shop.offers;
 
     dom.shopArcanaValue.textContent = currentPlayer.arcanaPoints;
@@ -1191,6 +1915,11 @@
   }
 
   function buySpecial(offerId) {
+    if (networkMatch.active) {
+      networkMatch.sendCommand("buy_special", { offerId });
+      return;
+    }
+
     const result = Rules.buySpecial(game, offerId);
 
     if (!result.ok) {
@@ -1213,7 +1942,13 @@
 
     dom.inventoryPanel.classList.remove("hidden");
 
-    const currentPlayer = game.players[game.currentSeat - 1];
+    const currentPlayer = getHudPlayer();
+    const usedSlots = currentPlayer.inventory.filter((slot) => slot !== null).length;
+    dom.inventoryCount.textContent = `${usedSlots}/${CONFIG.arcane.inventoryMax}`;
+    dom.inventoryCount.setAttribute(
+      "aria-label",
+      `${usedSlots} de ${CONFIG.arcane.inventoryMax} espaços ocupados`
+    );
     dom.inventorySlots.innerHTML = "";
 
     for (let i = 0; i < CONFIG.arcane.inventoryMax; i++) {
@@ -1230,14 +1965,15 @@
         slot.setAttribute("data-rarity", instance.rarity);
         const definition = Specials.getById(instance.defId);
         const phaseAvailable = Boolean(definition);
-        const activeEffects = Rules.getActiveEffects(game);
+        const activeEffects = currentPlayer.activeEffects || {};
         const alreadyActive = Boolean(activeEffects[instance.defId]);
         const readyToUse = phaseAvailable
           && instance.cooldownTurns === 0
           && !alreadyActive
           && !shotActive
           && !Physics.ballsMoving()
-          && !currentPlayer.shop.open;
+          && !currentPlayer.shop.open
+          && (!networkMatch.active || networkMatch.seat === game.currentSeat);
 
         let usesText = "";
         if (instance.useType === "limited") {
@@ -1262,7 +1998,7 @@
             <button class="use" data-slot-index="${i}" ${readyToUse ? "" : "disabled"}>
               ${alreadyActive ? "Armado" : "Usar"}
             </button>
-            <button class="discard" data-slot-index="${i}">Descartar</button>
+            <button class="discard" data-slot-index="${i}" ${networkMatch.active && networkMatch.seat !== game.currentSeat ? "disabled" : ""}>Descartar</button>
           </div>
         `;
       }
@@ -1286,10 +2022,25 @@
 
   }
 
+  function setHudPanelCollapsed(panel, toggle, collapsed) {
+    const panelName = panel.getAttribute("aria-label") || "painel";
+    const action = collapsed ? "Abrir" : "Recolher";
+
+    panel.classList.toggle("collapsed", collapsed);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.setAttribute("aria-label", `${action} ${panelName.toLowerCase()}`);
+    toggle.title = `${action} ${panelName.toLowerCase()}`;
+  }
+
   function useSpecialFromSlot(slotIndex) {
-    const player = game.players[game.currentSeat - 1];
+    const player = getHudPlayer();
     const instance = player.inventory[slotIndex];
     if (!instance) return;
+
+    if (networkMatch.active && networkMatch.seat !== game.currentSeat) {
+      showToast("Use especiais somente no seu turno", "error");
+      return;
+    }
 
     if (shotActive || Physics.ballsMoving() || drag.active || player.shop.open) {
       showToast("Use especiais antes de preparar a tacada", "error");
@@ -1297,7 +2048,11 @@
     }
 
     if (instance.defId === "rewind") {
-      activateRewind(slotIndex, instance);
+      if (networkMatch.active) {
+        networkMatch.sendCommand("use_special", { instanceId: instance.uid });
+      } else {
+        activateRewind(slotIndex, instance);
+      }
       return;
     }
 
@@ -1437,7 +2192,7 @@
     lastResolvedShot = null;
     currentShotEffects = {};
     currentShotStart = null;
-    AudioSys.playSpecial();
+    AudioSys.playArcaneEffect("rewind");
     showToast(`Jogada rebobinada. Jogador ${result.shooterSeat} joga novamente.`, "arcana");
     updateScoreboard();
     updateTurnUI();
@@ -1455,6 +2210,16 @@
   }
 
   function activateSpecial(slotIndex, target) {
+    if (networkMatch.active) {
+      const player = getHudPlayer();
+      const instance = player.inventory[slotIndex];
+      if (!instance) return;
+      const type = target ? "select_special_target" : "use_special";
+      networkMatch.sendCommand(type, { instanceId: instance.uid, target });
+      setStateLabel("Validando magia no servidor");
+      return;
+    }
+
     const result = Rules.useSpecial(game, slotIndex, target, {
       shotReady: !shotActive && !Physics.ballsMoving() && !drag.active
     });
@@ -1471,7 +2236,7 @@
       return;
     }
 
-    AudioSys.playSpecial();
+    AudioSys.playArcaneEffect(result.effect.defId);
     if (result.effect.defId === "position_swap") {
       if (!Physics.swapCueWithBall(result.effect.target.ballId)) {
         showToast("Não foi possível trocar essas posições", "error");
@@ -1502,7 +2267,7 @@
       return;
     }
 
-    const player = game.players[game.currentSeat - 1];
+    const player = networkMatch.active ? getHudPlayer() : game.players[game.currentSeat - 1];
     const effects = Object.values(player.activeEffects);
 
     if (effects.length === 0) {
@@ -1520,6 +2285,13 @@
   }
 
   function discardSpecial(slotIndex) {
+    if (networkMatch.active) {
+      const player = getHudPlayer();
+      const instance = player.inventory[slotIndex];
+      if (instance) networkMatch.sendCommand("discard_special", { instanceId: instance.uid });
+      return;
+    }
+
     const result = Rules.discardSpecial(game, slotIndex);
     if (!result.ok) return;
 
@@ -1530,6 +2302,7 @@
   }
 
   function showToast(message, type = "info") {
+    AudioSys.playNotification(type);
     const toast = document.createElement("div");
     toast.className = `toast ${type}`;
     toast.textContent = message;
@@ -1553,6 +2326,7 @@
 
     drawSpecialTableEffects();
     drawParticles();
+    drawOpeningBreakGuide();
     drawBalls();
     drawAim();
     drawTimeFreezeAim();
@@ -1569,6 +2343,28 @@
       if (!ball.active) continue;
       drawBall(ball);
     }
+  }
+
+  function drawOpeningBreakGuide() {
+    if (!canPlaceOpeningCue()) return;
+    const cue = Physics.getCueBall();
+    if (!cue) return;
+    const padding = CONFIG.input.openingBreak.cueVerticalPadding;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(104, 200, 255, 0.36)";
+    ctx.fillStyle = "rgba(190, 230, 255, 0.82)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([7, 7]);
+    ctx.beginPath();
+    ctx.moveTo(cue.x, padding);
+    ctx.lineTo(cue.x, CONFIG.table.height - padding);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "700 11px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("ARRASTE ↕", cue.x, cue.y - cue.radius - 13);
+    ctx.restore();
   }
 
   function drawBall(ball) {
@@ -1829,9 +2625,11 @@
 
   function drawTimeFreezeAim() {
     const freeze = Physics.getTimeFreezeState();
-    if (!freeze || !freeze.active) return;
+    const networkFreeze = networkMatch.active && networkMatch.freezeActive;
+    if ((!freeze || !freeze.active) && !networkFreeze) return;
     const cue = Physics.getCueBall();
     if (!cue) return;
+    const cueDirection = networkFreeze ? networkMatch.freezeAngle : freeze.cueDirection;
 
     ctx.save();
     ctx.strokeStyle = "rgba(170, 240, 255, 0.94)";
@@ -1842,8 +2640,8 @@
     ctx.beginPath();
     ctx.moveTo(cue.x, cue.y);
     ctx.lineTo(
-      cue.x + Math.cos(freeze.cueDirection) * 220,
-      cue.y + Math.sin(freeze.cueDirection) * 220
+      cue.x + Math.cos(cueDirection) * 220,
+      cue.y + Math.sin(cueDirection) * 220
     );
     ctx.stroke();
     ctx.restore();
@@ -2293,6 +3091,32 @@
   function rand(min, max) {
     return min + Math.random() * (max - min);
   }
+
+  window.ArcaneGame = {
+    enterMultiplayer,
+    applyMultiplayerPhysics,
+    applyMultiplayerPlayers,
+    applyMultiplayerPrivateState,
+    applyMultiplayerShopOpened,
+    applyMultiplayerShopClosed,
+    applyMultiplayerShopState,
+    applyMultiplayerShopRerolled,
+    applyMultiplayerSpecialBought,
+    applyMultiplayerSpecialDiscarded,
+    applyMultiplayerSpecialUsed,
+    applyMultiplayerSpecialEffectStarted,
+    applyMultiplayerSpecialEffectFinished,
+    applyMultiplayerSpecialPhysicsEvent,
+    applyMultiplayerArcaneEvent,
+    applyMultiplayerShotAccepted,
+    setMultiplayerShotActive,
+    applyMultiplayerTurn,
+    applyMultiplayerShotResult,
+    finishMultiplayer,
+    applyMultiplayerRematchState,
+    leaveMultiplayer,
+    notify: showToast
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

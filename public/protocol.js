@@ -11,6 +11,7 @@ const Protocol = (() => {
     "leave_room",
     "set_ready",
     "start_match",
+    "request_rematch",
     "shoot",
     "cancel_aim",
     "request_snapshot",
@@ -20,7 +21,9 @@ const Protocol = (() => {
     "buy_special",
     "use_special",
     "discard_special",
-    "select_special_target"
+    "select_special_target",
+    "set_frozen_direction",
+    "release_time_freeze"
   ]);
 
   const SERVER_TYPES = Object.freeze([
@@ -41,6 +44,7 @@ const Protocol = (() => {
     "turn_started",
     "points_updated",
     "match_finished",
+    "rematch_state",
     "shop_state",
     "shop_rerolled",
     "shop_opened",
@@ -52,6 +56,7 @@ const Protocol = (() => {
     "special_cooldown",
     "special_effect_started",
     "special_effect_finished",
+    "special_physics_event",
     "inventory_state",
     "arcana_points_updated",
     "arcane_ball_spawned",

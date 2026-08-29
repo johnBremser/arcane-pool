@@ -12,7 +12,7 @@
     <header id="topbar">
       <div id="brand">
         <h1>Arcane Pool</h1>
-        <span id="subtitle">FASE 6 — Bolas Mágicas</span>
+        <span id="subtitle">FASE 8 — Multiplayer Arcano</span>
       </div>
 
       <div id="scoreboard">
@@ -40,9 +40,11 @@
           <option value="classic">Modo Clássico</option>
           <option value="arcane">Modo Arcano</option>
         </select>
+        <button id="multiplayerButton" type="button">Multiplayer</button>
         <button id="shopButton" type="button" class="hidden">Loja Arcana (L)</button>
         <button id="resetButton" type="button">Nova partida</button>
         <button id="audioButton" type="button">Ativar som</button>
+        <button id="musicButton" type="button" aria-pressed="false">Música: desligada</button>
       </div>
     </header>
 
@@ -68,20 +70,25 @@
         <button id="targetCancelButton" type="button">Cancelar</button>
       </div>
 
-      <div id="spinPanel" aria-label="Controle de efeito">
-        <button id="spinToggle" type="button" aria-expanded="true">Efeito</button>
+      <div id="spinPanel" class="collapsed" aria-label="Controle de efeito">
+        <button id="spinToggle" class="hudPanelToggle" type="button" aria-controls="spinContent" aria-expanded="false">
+          <span>Efeito</span>
+        </button>
         <div id="spinContent">
-        <div id="spinTitle">Efeito na bola branca</div>
-        <div id="spinBall">
-          <div id="spinDot"></div>
-        </div>
-        <div id="spinInfo">Efeito: 0.00, 0.00</div>
-        <button id="spinReset" type="button">Zerar efeito</button>
+          <div id="spinTitle">Efeito na bola branca</div>
+          <div id="spinBall">
+            <div id="spinDot"></div>
+          </div>
+          <div id="spinInfo">Efeito: 0.00, 0.00</div>
+          <button id="spinReset" type="button">Zerar efeito</button>
         </div>
       </div>
 
-      <div id="inventoryPanel" class="hidden" aria-label="Inventário">
-        <div class="inventoryTitle">Inventário</div>
+      <div id="inventoryPanel" class="hidden collapsed" aria-label="Inventário">
+        <button id="inventoryToggle" class="hudPanelToggle" type="button" aria-controls="inventorySlots" aria-expanded="false">
+          <span>Inventário</span>
+          <span id="inventoryCount" class="hudPanelCount" aria-label="0 de 3 espaços ocupados">0/3</span>
+        </button>
         <div id="inventorySlots">
           <div class="inventorySlot empty" data-slot="0">
             <div class="slotLabel">Vazio</div>
@@ -123,12 +130,56 @@
       </div>
     </div>
 
+    <div id="multiplayerOverlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="multiplayerTitle">
+      <div id="multiplayerCard">
+        <div class="multiplayerHeader">
+          <div>
+            <h2 id="multiplayerTitle">Multiplayer</h2>
+            <p id="multiplayerStatus">Conectando ao servidor…</p>
+          </div>
+          <button id="multiplayerCloseButton" class="secondary" type="button" aria-label="Fechar multiplayer">Fechar</button>
+        </div>
+
+        <div id="multiplayerEntry">
+          <label class="multiplayerField">
+            <span>Seu nome</span>
+            <input id="multiplayerName" type="text" maxlength="24" autocomplete="nickname" value="Jogador" />
+          </label>
+          <button id="createRoomButton" type="button">Criar sala</button>
+          <div class="multiplayerDivider"><span>ou</span></div>
+          <label class="multiplayerField">
+            <span>Código da sala</span>
+            <input id="roomCodeInput" type="text" maxlength="6" autocomplete="off" placeholder="ABC123" />
+          </label>
+          <button id="joinRoomButton" type="button" class="secondary">Entrar na sala</button>
+        </div>
+
+        <div id="multiplayerLobby" class="hidden">
+          <div class="roomCodeBox">
+            <span>Sala</span>
+            <strong id="roomCodeValue">------</strong>
+            <small>Envie este código ao segundo jogador</small>
+          </div>
+          <div id="lobbyPlayers"></div>
+          <div class="multiplayerActions">
+            <button id="readyButton" type="button">Estou pronto</button>
+            <button id="startMatchButton" type="button" class="secondary" disabled>Iniciar partida</button>
+            <button id="leaveRoomButton" type="button" class="danger">Sair da sala</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="gameOverOverlay" class="hidden">
       <div id="gameOverCard">
         <h2 id="gameOverTitle">Fim de partida</h2>
         <p id="gameOverReason"></p>
         <div id="gameOverScores"></div>
-        <button id="gameOverButton" type="button">Nova partida</button>
+        <p id="gameOverRematchStatus" class="hidden" aria-live="polite"></p>
+        <div id="gameOverActions">
+          <button id="gameOverButton" type="button">Nova partida</button>
+          <button id="gameOverExitButton" class="danger hidden" type="button">Encerrar sala</button>
+        </div>
       </div>
     </div>
   </div>
@@ -141,5 +192,6 @@
   <script src="net.js"></script>
   <script src="audio.js"></script>
   <script src="game.js"></script>
+  <script src="multiplayer.js"></script>
 </body>
 </html>

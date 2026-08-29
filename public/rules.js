@@ -965,6 +965,7 @@ const Rules = ((CONFIG, Specials) => {
           (id) => id === "pressure" || id === "double_shot"
         )
       })),
+      zones: (match.zones || []).map((zone) => Object.assign({}, zone)),
       magicBall: match.magicBall
         ? {
             id: match.magicBall.id,
@@ -989,10 +990,13 @@ const Rules = ((CONFIG, Specials) => {
     if (!player) return null;
     return {
       seat,
+      arcanaPoints: player.arcanaPoints,
       inventory: player.inventory,
       shopOffers: player.shop.offers,
+      shopOpen: player.shop.open,
       boughtHistory: player.boughtHistory,
-      activeEffects: player.activeEffects
+      activeEffects: player.activeEffects,
+      legendaryPurchased: player.legendaryPurchased
     };
   }
 

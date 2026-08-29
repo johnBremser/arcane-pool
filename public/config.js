@@ -1,12 +1,12 @@
 const CONFIG = {
-  version: "0.7.0",
+  version: "0.9.0",
 
   table: {
     width: 1280,
     height: 640,
     rail: 56,
-    pocketRadius: 27,
-    captureRadius: 25
+    pocketRadius: 24,
+    captureRadius: 21
   },
 
   balls: {
@@ -20,8 +20,8 @@ const CONFIG = {
     stopSpeed: 4,
     restitutionBall: 0.97,
     restitutionCushion: 0.85,
-    maxShotSpeed: 1450,
-    highPowerBoost: 0.16,
+    maxShotSpeed: 1500,
+    highPowerBoost: 0.20,
     highPowerExponent: 3,
 
     spin: {
@@ -35,7 +35,11 @@ const CONFIG = {
 
   input: {
     maxDrag: 190,
-    minPower: 0.045
+    minPower: 0.045,
+    openingBreak: {
+      powerMultiplier: 1.45,
+      cueVerticalPadding: 46
+    }
   },
 
   turn: {

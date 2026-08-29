@@ -31,8 +31,9 @@ rede se tornem fontes de verdade para regras, pontos ou inventário.
 ### Servidor
 
 - Node.js com `http` e apenas o pacote `ws` para WebSocket.
-- Nesta fase o servidor entrega os arquivos, health check, handshake e ping.
-- Nas Fases 7–8 cada sala possuirá seu próprio mundo físico e estado de regras.
+- Na Fase 8 o servidor entrega os arquivos, health check, salas clássicas ou
+  arcanas, física autoritativa e a economia privada de cada jogador.
+- Cada sala possui seu próprio mundo físico e estado de regras.
 - O servidor receberá intenções, nunca resultados calculados pelo cliente.
 
 ## Estado do servidor por sala
@@ -73,8 +74,10 @@ ClientState
 ```
 
 No modo local, `rules.js` é a autoridade provisória. No multiplayer, os mesmos
-comandos são executados pelo servidor; o cliente apenas apresenta snapshots e
-eventos confirmados.
+comandos são executados pelo servidor; o cliente envia intenções e apresenta
+snapshots e eventos confirmados. A Fase 8 inclui saldo, ofertas privadas,
+reroll, compra, descarte, ativação e alvos. Modificadores físicos e a Bola
+Mágica também existem somente no mundo autoritativo da sala.
 
 ## Ações de entrada
 
@@ -111,8 +114,9 @@ disponível para a navegação de foco e acessibilidade do navegador.
 - inventário: três slots;
 - lendário: no máximo uma aquisição por jogador na partida.
 
-Todas as operações usam as funções de `rules.js`. Nas Fases 7–8 somente o
-servidor poderá chamá-las em resposta a comandos remotos válidos.
+Todas as operações usam as funções de `rules.js`. Em rede, somente o servidor
+pode chamá-las em resposta a comandos remotos válidos; saldo, preço e conteúdo
+do inventário enviados pelo navegador nunca são aceitos como resultado.
 
 ## Ciclo dos especiais da Fase 4
 
@@ -158,8 +162,8 @@ física validam novamente antes de alterar o estado.
 - Caçapa Portal: par de caçapas dentro do modificador da tacada;
 - Bola Explosiva: impulso radial sem remover a bola escolhida.
 
-No multiplayer futuro, checkpoints de Rebobinar e alvos validados ficam apenas
-no servidor; o cliente recebe snapshots e eventos públicos.
+No multiplayer, checkpoints de Rebobinar e alvos validados ficam apenas no
+servidor; o cliente recebe snapshots e eventos públicos.
 
 ## Regras de pontuação consolidadas
 
@@ -189,7 +193,7 @@ quase idênticas, o projeto adotará uma única entidade canônica: **Bola Mági
 Na Fase 6, `rules.js` mantém a entidade serializável e sua fila ordenada de
 eventos, enquanto `physics.js` mantém somente o corpo físico. No modo local,
 `game.js` escolhe uma posição livre através da física e pede às regras para
-criar a entidade; no multiplayer, esse mesmo fluxo será executado pelo servidor.
+criar a entidade; no multiplayer, esse mesmo fluxo é executado pelo servidor.
 
 O tipo público da bola é sua raridade: comum, incomum, rara ou lendária. Ao
 surgir, a recompensa é sorteada entre os especiais da mesma raridade e fica
@@ -229,13 +233,24 @@ mesmos seis nomes `arcane_*` do protocolo e também os publica no navegador como
 - estado serializável separado de objetos de renderização;
 - diagnósticos de rede e física poderão ser ativados sem alterar regras.
 
+### Calibração das caçapas
+
+A abertura visual usa `table.pocketRadius`, enquanto a captura física usa
+`table.captureRadius`. A calibração atual mantém a abertura em `24` e exige que
+o centro da bola entre em um raio de `21` para a encaçapada, reduzindo acertos
+de borda sem fechar excessivamente as caçapas.
+
 ### Calibração da força
 
 A velocidade básica continua limitada por `physics.maxShotSpeed`. Para melhorar
 quebradas e trajetórias de ponta a ponta sem prejudicar o controle fino, a
 potência recebe um reforço cúbico configurável por `highPowerBoost` e
 `highPowerExponent`. Com os valores atuais, tacadas leves praticamente não
-mudam, 50% de força recebe cerca de 2% de reforço e 100% recebe 16%.
+mudam, 50% de força recebe cerca de 2,5% de reforço e 100% recebe 20%, chegando
+a uma velocidade efetiva máxima de `1800`. Somente a primeira tacada recebe o
+multiplicador adicional `input.openingBreak.powerMultiplier` de 1,45, chegando
+a `2610` na força máxima. Antes dessa saída, a branca pode ser deslocada apenas
+no eixo vertical; no multiplayer, o servidor limita e valida a coordenada.
 
 ## Entregas por fase
 

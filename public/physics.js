@@ -290,7 +290,7 @@ const PhysicsCore = (() => {
     cue.y = y;
   }
 
-  function shoot(angle, power, spin) {
+  function shoot(angle, power, spin, options = {}) {
     const cue = getCueBall();
 
     if (!cue || !cue.active || ballsMoving()) {
@@ -300,9 +300,13 @@ const PhysicsCore = (() => {
     const clampedPower = Math.max(0, Math.min(1, power));
     const highPowerBoost = CONFIG.physics.highPowerBoost
       * Math.pow(clampedPower, CONFIG.physics.highPowerExponent);
+    const openingMultiplier = options.openingBreak
+      ? CONFIG.input.openingBreak.powerMultiplier
+      : 1;
     const speed = clampedPower
       * CONFIG.physics.maxShotSpeed
-      * (1 + highPowerBoost);
+      * (1 + highPowerBoost)
+      * openingMultiplier;
 
     cue.vx = Math.cos(angle) * speed;
     cue.vy = Math.sin(angle) * speed;
