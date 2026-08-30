@@ -41,6 +41,7 @@ const Rules = ((CONFIG, Specials) => {
       arcaneEventSequence: 0,
       arcaneEventQueue: [],
       exchangeCandidateSeat: null,
+      openingBreakPending: true,
       winnerSeat: null,
       gameEndReason: ""
     };
@@ -129,6 +130,22 @@ const Rules = ((CONFIG, Specials) => {
     match.turn.shotNumber += 1;
     match.turn.timer = createTurnTimer(now);
     return match.turn.timer;
+  }
+
+  function isOpeningBreak(match) {
+    if (!match || match.phase !== "playing") return false;
+    if (typeof match.openingBreakPending === "boolean") {
+      return match.openingBreakPending;
+    }
+    return Boolean(
+      match.turn && match.turn.number === 1 && match.turn.shotNumber === 1
+    );
+  }
+
+  function consumeOpeningBreak(match) {
+    if (!isOpeningBreak(match)) return false;
+    match.openingBreakPending = false;
+    return true;
   }
 
   function getTurnRemainingMs(match, now = Date.now()) {
@@ -946,6 +963,7 @@ const Rules = ((CONFIG, Specials) => {
       mode: match.mode,
       phase: match.phase,
       currentSeat: match.currentSeat,
+      openingBreakPending: isOpeningBreak(match),
       turn: match.turn
         ? {
             number: match.turn.number,
@@ -1007,6 +1025,8 @@ const Rules = ((CONFIG, Specials) => {
     getOpponentSeat,
     startTurn,
     restartShotWindow,
+    isOpeningBreak,
+    consumeOpeningBreak,
     getTurnRemainingMs,
     pauseTurnTimer,
     resumeTurnTimer,

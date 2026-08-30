@@ -23,6 +23,10 @@ body {
   min-height: 100%;
 }
 
+html {
+  background: var(--bg-1);
+}
+
 body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--text);
@@ -39,8 +43,11 @@ body {
 }
 
 #topbar {
+  position: relative;
+  z-index: 30;
   display: grid;
   grid-template-columns: auto 1fr auto;
+  grid-template-areas: "brand scoreboard controls";
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
@@ -57,13 +64,6 @@ body {
   font-size: 24px;
   letter-spacing: 0.4px;
   color: var(--gold);
-}
-
-#subtitle {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 #scoreboard {
@@ -157,7 +157,14 @@ body {
 #controls {
   display: flex;
   gap: 10px;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
 }
+
+#brand { grid-area: brand; }
+#scoreboard { grid-area: scoreboard; }
+#controls { grid-area: controls; }
 
 button {
   appearance: none;
@@ -179,6 +186,114 @@ button:hover {
 
 button:active {
   transform: translateY(0);
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgba(104, 200, 255, 0.78);
+  outline-offset: 3px;
+}
+
+.controlMenuWrap {
+  position: relative;
+}
+
+.menuTrigger {
+  min-width: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 8px 14px;
+}
+
+.menuTrigger small {
+  max-width: 130px;
+  overflow: hidden;
+  color: rgba(8, 17, 31, 0.68);
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#audioMenuButton {
+  background: linear-gradient(180deg, #c89dff, #8b5cf6);
+  color: #0a0818;
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.28);
+}
+
+#helpButton {
+  background: linear-gradient(180deg, #e0e9f6, #b4c4dc);
+}
+
+.controlPopover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 90;
+  width: 310px;
+  padding: 16px;
+  border: 1px solid rgba(158, 199, 255, 0.28);
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(25, 38, 59, 0.99), rgba(7, 13, 23, 0.99));
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.58);
+  color: var(--text);
+}
+
+.controlPopover.hidden {
+  display: none;
+}
+
+.controlPopover > strong {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--gold);
+  font-size: 14px;
+}
+
+.settingsField {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.settingsField select {
+  width: 100%;
+}
+
+.popoverActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.popoverActions button {
+  padding-inline: 9px;
+}
+
+.audioPopover {
+  width: 250px;
+}
+
+#gameMenu {
+  left: 0;
+  right: auto;
+}
+
+.audioPopover button {
+  width: 100%;
+  margin-top: 8px;
+  background: linear-gradient(180deg, #e0e9f6, #b4c4dc);
+}
+
+.audioPopover button[aria-pressed="true"] {
+  background: linear-gradient(180deg, #8debb9, #43c680);
 }
 
 #stage {
@@ -558,6 +673,259 @@ button:active {
   font-weight: 700;
 }
 
+/* ===================== AJUDA E GUIA ARCANO ===================== */
+
+#helpOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 6, 12, 0.84);
+  backdrop-filter: blur(12px);
+}
+
+#helpOverlay.hidden {
+  display: none;
+}
+
+#helpCard {
+  width: min(980px, 96vw);
+  max-height: calc(100vh - 36px);
+  overflow: hidden;
+  border: 1px solid rgba(180, 140, 255, 0.34);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(180, 140, 255, 0.15), transparent 32%),
+    linear-gradient(160deg, rgba(24, 37, 58, 0.99), rgba(7, 13, 23, 0.99));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.68);
+}
+
+.helpHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.helpHeader h2 {
+  margin: 2px 0 0;
+  color: var(--gold);
+  font-size: 25px;
+}
+
+.eyebrow {
+  color: var(--purple);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.helpContent {
+  max-height: calc(100vh - 132px);
+  overflow-y: auto;
+  padding: 22px 24px 28px;
+  scrollbar-color: rgba(180, 140, 255, 0.5) transparent;
+}
+
+.helpContent p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.helpIntro {
+  padding: 16px 18px;
+  border: 1px solid rgba(233, 196, 106, 0.22);
+  border-radius: 15px;
+  background: rgba(233, 196, 106, 0.07);
+}
+
+.helpIntro p {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.helpSection {
+  margin-top: 22px;
+}
+
+.helpSection h3,
+.specialGuideHeader h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.helpSteps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.helpSteps > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 64px;
+  padding: 11px;
+  border: 1px solid rgba(104, 200, 255, 0.16);
+  border-radius: 13px;
+  background: rgba(104, 200, 255, 0.06);
+}
+
+.helpSteps b {
+  display: grid;
+  flex: 0 0 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #07111d;
+}
+
+.helpSteps span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+kbd {
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.arcaneHelp {
+  padding: 16px 18px;
+  border: 1px solid rgba(180, 140, 255, 0.25);
+  border-radius: 15px;
+  background: rgba(180, 140, 255, 0.07);
+}
+
+.helpCallout {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--purple);
+  color: #d8e4f4;
+  font-size: 12px;
+}
+
+.specialGuideHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.specialGuideHeader p {
+  margin-top: 3px;
+}
+
+.specialGuideHeader > span {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(180, 140, 255, 0.14);
+  color: var(--purple);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.specialGuideGroup {
+  margin-top: 9px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.specialGuideGroup summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 850;
+}
+
+.specialGuideGroup summary small {
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.specialGuideGroup.common summary { border-left: 4px solid #eef5ff; }
+.specialGuideGroup.uncommon summary { border-left: 4px solid var(--green); }
+.specialGuideGroup.rare summary { border-left: 4px solid var(--blue); }
+.specialGuideGroup.legendary summary { border-left: 4px solid var(--gold); }
+
+.specialGuideGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.guideSpecialCard {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(4, 9, 16, 0.38);
+}
+
+.guideSpecialIcon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(180, 140, 255, 0.13);
+  font-size: 17px;
+}
+
+.guideSpecialCard h4 {
+  display: inline;
+  margin: 0 7px 0 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.guideUseType {
+  color: var(--gold);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.guideSpecialCard p {
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.guideSpecialCard small {
+  display: block;
+  margin-top: 7px;
+  color: #cbd8e9;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 #gameOverRematchStatus.hidden,
 #gameOverExitButton.hidden {
   display: none;
@@ -575,9 +943,30 @@ button:active {
   font-size: 14px;
 }
 
+@media (max-width: 1100px) and (min-width: 901px) {
+  #topbar {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "brand controls"
+      "scoreboard scoreboard";
+  }
+
+  #controls {
+    justify-content: flex-end;
+  }
+
+  #scoreboard {
+    width: 100%;
+  }
+}
+
 @media (max-width: 900px) {
   #topbar {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "brand"
+      "scoreboard"
+      "controls";
     justify-items: center;
     text-align: center;
   }
@@ -616,9 +1005,10 @@ button:active {
     justify-content: center;
   }
 
-  #modeSelect {
+  #modeSelect,
+  #opponentSelect {
     width: 100%;
-    max-width: 200px;
+    max-width: none;
   }
 
   #shopButton {
@@ -651,7 +1041,8 @@ button:active {
 
 /* ===================== FASE 3: ECONOMIA ARCANA ===================== */
 
-#modeSelect {
+#modeSelect,
+#opponentSelect {
   appearance: none;
   border: 0;
   border-radius: 12px;
@@ -664,14 +1055,135 @@ button:active {
   transition: transform 0.12s ease, filter 0.12s ease;
 }
 
-#modeSelect:hover {
+#modeSelect:hover,
+#opponentSelect:hover {
   transform: translateY(-1px);
   filter: brightness(1.05);
 }
 
-#modeSelect option {
+#modeSelect option,
+#opponentSelect option {
   background: #1a2438;
   color: var(--text);
+}
+
+@media (max-width: 600px) {
+  #app {
+    width: min(100% - 12px, 1480px);
+    padding-top: 6px;
+  }
+
+  #topbar {
+    gap: 10px;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 15px;
+  }
+
+  #brand h1 {
+    font-size: 22px;
+  }
+
+  #scoreboard {
+    display: grid;
+    grid-template-columns: minmax(78px, 1fr) minmax(136px, 1.45fr) minmax(78px, 1fr);
+    gap: 6px;
+  }
+
+  .playerCard {
+    min-width: 0;
+    padding: 7px 5px;
+  }
+
+  .playerName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #turnIndicator {
+    min-width: 0;
+  }
+
+  #turnLabel,
+  #stateLabel {
+    max-width: 100%;
+    padding: 5px 7px;
+    font-size: 10px;
+  }
+
+  #stateLabel {
+    line-height: 1.2;
+  }
+
+  #controls {
+    display: flex;
+    width: 100%;
+    gap: 7px;
+    justify-content: center;
+  }
+
+  #controls > button,
+  #controls > .controlMenuWrap > button {
+    padding: 9px 10px;
+  }
+
+  .menuTrigger {
+    min-width: 100px;
+  }
+
+  .controlPopover {
+    width: min(310px, calc(100vw - 24px));
+  }
+
+  #audioMenu {
+    right: 0;
+    left: auto;
+  }
+
+  #helpCard {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .helpHeader {
+    padding: 15px;
+  }
+
+  .helpHeader h2 {
+    font-size: 20px;
+  }
+
+  .helpContent {
+    max-height: calc(100vh - 94px);
+    padding: 15px;
+  }
+
+  .helpSteps,
+  .specialGuideGrid {
+    grid-template-columns: 1fr;
+  }
+
+  #stage {
+    padding-top: 34px;
+    padding-bottom: 44px;
+    border-radius: 16px;
+  }
+
+  #forcePanel {
+    bottom: 6px;
+    height: 30px;
+    width: calc(100% - 32px);
+  }
+}
+
+#opponentSelect {
+  background: linear-gradient(180deg, #a7efff, #58bfdc);
+  box-shadow: 0 6px 18px rgba(73, 189, 221, 0.22);
+}
+
+body.ai-thinking #stage {
+  box-shadow: var(--shadow), 0 0 0 1px rgba(104, 200, 255, 0.22);
 }
 
 .playerArcana {
@@ -1449,6 +1961,7 @@ button:disabled {
 }
 
 body.network-match #modeSelect,
+body.network-match #opponentSelect,
 body.network-match #multiplayerButton {
   display: none;
 }

@@ -43,6 +43,12 @@ const Multiplayer = (() => {
     dom.codeInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") joinRoom();
     });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !dom.overlay.classList.contains("hidden") && !inMatch) {
+        close();
+      }
+    });
   }
 
   function bindNetworkEvents() {
@@ -203,10 +209,12 @@ const Multiplayer = (() => {
     dom.overlay.classList.remove("hidden");
     if (Net.getState().status === "offline") Net.connect();
     if (currentLobby) renderLobby(currentLobby);
+    window.setTimeout(() => dom.name.focus(), 0);
   }
 
   function close() {
     dom.overlay.classList.add("hidden");
+    dom.openButton.focus();
   }
 
   function setStatus(text) {

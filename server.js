@@ -90,7 +90,7 @@ const server = http.createServer((request, response) => {
       name: "arcane-pool",
       version: CONFIG.version,
       protocolVersion: Protocol.VERSION,
-      phase: 8,
+      phase: 10,
       multiplayerEnabled: true,
       arcaneEconomyEnabled: true,
       arcaneMultiplayerEnabled: true,
@@ -681,11 +681,7 @@ function handleShoot(session, message) {
     return;
   }
 
-  const openingBreak = Boolean(
-    room.match.turn &&
-    room.match.turn.number === 1 &&
-    room.match.turn.shotNumber === 1
-  );
+  const openingBreak = Rules.isOpeningBreak(room.match);
 
   if (shot.cueY !== null) {
     if (!openingBreak) {
@@ -731,6 +727,7 @@ function handleShoot(session, message) {
     return;
   }
 
+  if (openingBreak) Rules.consumeOpeningBreak(room.match);
   Rules.pauseTurnTimer(room.match, Date.now());
   room.simulating = true;
   room.snapshotTick = 0;
@@ -1354,7 +1351,7 @@ server.listen(PORT, HOST, () => {
   const address = server.address();
   const actualPort = address && typeof address === "object" ? address.port : PORT;
   console.log(`Arcane Pool disponível em http://localhost:${actualPort}`);
-  console.log(`Protocolo WebSocket v${Protocol.VERSION}; Fase 8 multiplayer Arcano completa.`);
+  console.log(`Protocolo WebSocket v${Protocol.VERSION}; Fase 10 de polimento final completa.`);
 });
 
 module.exports = { server, wss, rooms };

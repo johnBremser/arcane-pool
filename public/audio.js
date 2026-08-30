@@ -23,7 +23,6 @@ const AudioSys = (() => {
         master.gain.value = 0.62;
         master.connect(ctx.destination);
         createNoiseBuffer();
-        enabled = true;
       } catch (err) {
         enabled = false;
       }
@@ -33,6 +32,16 @@ const AudioSys = (() => {
       ctx.resume();
     }
 
+    return Boolean(ctx);
+  }
+
+  function setEnabled(nextEnabled) {
+    if (!nextEnabled) {
+      enabled = false;
+      return false;
+    }
+
+    enabled = ensure();
     return enabled;
   }
 
@@ -51,8 +60,6 @@ const AudioSys = (() => {
   }
 
   function playTone(options) {
-    if (!enabled || !ctx) return;
-
     const {
       freq = 440,
       end = null,
@@ -63,6 +70,8 @@ const AudioSys = (() => {
       attack = 0,
       output = master
     } = options;
+
+    if (!ctx || (!enabled && output !== ambientBus)) return;
 
     const t = now() + delay;
     const osc = ctx.createOscillator();
@@ -91,8 +100,6 @@ const AudioSys = (() => {
   }
 
   function playNoise(options) {
-    if (!enabled || !ctx || !noiseBuffer) return;
-
     const {
       duration = 0.08,
       gain = 0.18,
@@ -103,6 +110,8 @@ const AudioSys = (() => {
       attack = 0,
       output = master
     } = options;
+
+    if (!ctx || !noiseBuffer || (!enabled && output !== ambientBus)) return;
 
     const t = now() + delay;
 
@@ -601,6 +610,30 @@ const AudioSys = (() => {
       });
     },
 
+    playCountdownTick(secondsLeft = 10) {
+      const seconds = Math.max(1, Math.ceil(Number(secondsLeft) || 1));
+      const urgent = seconds <= 3;
+
+      playTone({
+        freq: urgent ? 920 : 650,
+        end: urgent ? 760 : 590,
+        type: urgent ? "square" : "sine",
+        duration: urgent ? 0.11 : 0.075,
+        gain: urgent ? 0.075 : 0.045
+      });
+
+      if (seconds === 1) {
+        playTone({
+          freq: 1040,
+          end: 820,
+          type: "square",
+          duration: 0.12,
+          gain: 0.065,
+          delay: 0.14
+        });
+      }
+    },
+
     playWin() {
       const notes = [523, 659, 784, 1047];
 
@@ -748,6 +781,7 @@ const AudioSys = (() => {
     playArcaneShot,
     playNotification,
     playBallReturn,
+    setEnabled,
     setAmbient,
     isAmbientEnabled() {
       return ambientEnabled;

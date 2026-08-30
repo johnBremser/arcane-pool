@@ -1,15 +1,18 @@
 {
   "name": "arcane-pool",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Arcane Pool: Sinuca Clássica e Arcana",
   "main": "server.js",
   "scripts": {
+    "test": "npm run test:basic && npm run test:phase7 && npm run test:phase8 && npm run test:phase9 && npm run test:phase10",
     "start": "node server.js",
     "dev": "node server.js",
     "test:basic": "node scripts/smoke-phase6.js",
     "test:phase7": "node scripts/smoke-phase7.js",
-    "test:phase8": "node scripts/smoke-phase8.js"
+    "test:phase8": "node scripts/smoke-phase8.js",
+    "test:phase9": "node scripts/smoke-phase9.js",
+    "test:phase10": "node scripts/smoke-phase10.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

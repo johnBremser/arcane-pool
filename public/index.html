@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#09101d" />
+  <meta name="description" content="Arcane Pool: sinuca clássica, poderes arcanos, multiplayer e oponente por IA." />
   <title>Arcane Pool: Sinuca Clássica e Arcana</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="style.css" />
@@ -12,7 +14,6 @@
     <header id="topbar">
       <div id="brand">
         <h1>Arcane Pool</h1>
-        <span id="subtitle">FASE 8 — Multiplayer Arcano</span>
       </div>
 
       <div id="scoreboard">
@@ -23,8 +24,8 @@
           <div class="playerBadge hidden">Vez</div>
         </div>
         <div id="turnIndicator">
-          <span id="turnLabel">Vez de: Jogador 1</span>
-          <span id="stateLabel">Pronto</span>
+          <span id="turnLabel" aria-live="polite">Vez de: Jogador 1</span>
+          <span id="stateLabel" role="status" aria-live="polite">Pronto</span>
           <span id="shotTimer" aria-label="Tempo da tacada">00:45</span>
         </div>
         <div class="playerCard" data-seat="2">
@@ -36,15 +37,48 @@
       </div>
 
       <div id="controls">
-        <select id="modeSelect" aria-label="Modo de jogo">
-          <option value="classic">Modo Clássico</option>
-          <option value="arcane">Modo Arcano</option>
-        </select>
-        <button id="multiplayerButton" type="button">Multiplayer</button>
+        <div class="controlMenuWrap">
+          <button id="gameMenuButton" class="menuTrigger" type="button" aria-controls="gameMenu" aria-expanded="false">
+            <span>Jogar</span>
+            <small id="gameMenuSummary">Clássico · local</small>
+          </button>
+          <div id="gameMenu" class="controlPopover hidden" role="dialog" aria-label="Configurar partida">
+            <strong>Configurar partida</strong>
+            <label class="settingsField">
+              <span>Modo</span>
+              <select id="modeSelect" aria-label="Modo de jogo">
+                <option value="classic">Clássico</option>
+                <option value="arcane">Arcano</option>
+              </select>
+            </label>
+            <label class="settingsField">
+              <span>Oponente</span>
+              <select id="opponentSelect" aria-label="Tipo de oponente">
+                <option value="local">2 jogadores locais</option>
+                <option value="ai_easy">IA: Fácil</option>
+                <option value="ai_normal">IA: Normal</option>
+                <option value="ai_hard">IA: Difícil</option>
+              </select>
+            </label>
+            <div class="popoverActions">
+              <button id="resetButton" type="button">Nova partida</button>
+              <button id="multiplayerButton" type="button" class="secondary">Multiplayer</button>
+            </div>
+          </div>
+        </div>
         <button id="shopButton" type="button" class="hidden">Loja Arcana (L)</button>
-        <button id="resetButton" type="button">Nova partida</button>
-        <button id="audioButton" type="button">Ativar som</button>
-        <button id="musicButton" type="button" aria-pressed="false">Música: desligada</button>
+        <div class="controlMenuWrap">
+          <button id="audioMenuButton" class="menuTrigger" type="button" aria-controls="audioMenu" aria-expanded="false">
+            <span>Áudio</span>
+            <small id="audioMenuSummary">desligado</small>
+          </button>
+          <div id="audioMenu" class="controlPopover audioPopover hidden" role="dialog" aria-label="Configurações de áudio">
+            <strong>Configurações de áudio</strong>
+            <button id="audioButton" type="button" aria-pressed="false">Efeitos: desligados</button>
+            <button id="musicButton" type="button" aria-pressed="false">Música: desligada</button>
+          </div>
+        </div>
+        <button id="helpButton" type="button">Ajuda</button>
       </div>
     </header>
 
@@ -102,17 +136,13 @@
         </div>
       </div>
 
-      <div id="help">
-        Mouse: mira | Clique e arraste: força | ESC: cancela | R: nova partida | L: loja (modo arcano)
-      </div>
-
       <div id="toastContainer"></div>
     </main>
 
-    <div id="shopOverlay" class="hidden">
+    <div id="shopOverlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="shopTitle">
       <div id="shopCard">
         <div class="shopHeader">
-          <h2>Loja Arcana</h2>
+          <h2 id="shopTitle">Loja Arcana</h2>
           <div class="shopInfo">
             <div class="shopArcana">✦ <span id="shopArcanaValue">0</span></div>
             <div class="shopInventory">Slots: <span id="shopInventorySpace">0/3</span></div>
@@ -170,7 +200,57 @@
       </div>
     </div>
 
-    <div id="gameOverOverlay" class="hidden">
+    <div id="helpOverlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <article id="helpCard">
+        <header class="helpHeader">
+          <div>
+            <span class="eyebrow">Guia do jogador</span>
+            <h2 id="helpTitle">Sobre o Arcane Pool</h2>
+          </div>
+          <button id="helpCloseButton" class="secondary" type="button" aria-label="Fechar ajuda">Fechar</button>
+        </header>
+
+        <div class="helpContent">
+          <section class="helpIntro">
+            <p>Arcane Pool mistura a sinuca de bola 8 com poderes que mudam cada partida. Você pode jogar no mesmo computador, contra a IA ou pela internet.</p>
+          </section>
+
+          <section class="helpSection">
+            <h3>Como jogar</h3>
+            <div class="helpSteps">
+              <div><b>1</b><span>Mova o mouse para mirar.</span></div>
+              <div><b>2</b><span>Clique, arraste e solte para definir a força.</span></div>
+              <div><b>3</b><span>Use o painel Efeito para controlar a bola branca.</span></div>
+            </div>
+            <p>Na primeira tacada, arraste a bola branca para cima ou para baixo antes de mirar. Atalhos: <kbd>Esc</kbd> cancela, <kbd>R</kbd> reinicia e <kbd>L</kbd> abre a loja no modo Arcano.</p>
+          </section>
+
+          <section class="helpSection">
+            <h3>Regras da bola 8</h3>
+            <p>Encaçape as bolas numeradas antes da bola 8. A bola 8 só pode cair corretamente no final; encaçapá-la antes encerra a partida em derrota. Os pontos registram seu desempenho, mas quem decide a vitória é a bola 8.</p>
+          </section>
+
+          <section class="helpSection arcaneHelp">
+            <h3>O que é o modo Arcano?</h3>
+            <p>Nesse modo você ganha energia <b>✦ Arcana</b> durante a partida. Abra a Loja Arcana, compre especiais e guarde até três no inventário. Alguns são ativados imediatamente; outros pedem que você escolha uma bola ou caçapa na mesa antes da tacada.</p>
+            <div class="helpCallout"><b>Bolas Mágicas:</b> toque nelas para ganhar energia e encaçape-as para receber uma recompensa maior.</div>
+          </section>
+
+          <section class="helpSection">
+            <div class="specialGuideHeader">
+              <div>
+                <h3>Guia dos efeitos</h3>
+                <p>Abra uma categoria para ver o que cada especial faz e como ativá-lo.</p>
+              </div>
+              <span>20 especiais</span>
+            </div>
+            <div id="specialGuide"></div>
+          </section>
+        </div>
+      </article>
+    </div>
+
+    <div id="gameOverOverlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="gameOverTitle">
       <div id="gameOverCard">
         <h2 id="gameOverTitle">Fim de partida</h2>
         <p id="gameOverReason"></p>
@@ -191,6 +271,7 @@
   <script src="rules.js"></script>
   <script src="net.js"></script>
   <script src="audio.js"></script>
+  <script src="ai.js"></script>
   <script src="game.js"></script>
   <script src="multiplayer.js"></script>
 </body>

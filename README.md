@@ -6,7 +6,7 @@ externas.
 
 ## Estado atual
 
-O projeto está na versão **0.9.0** e está consolidado até a **Fase 8**:
+O projeto está na versão **1.0.0** e está consolidado até a **Fase 10**:
 
 - Fase 0: arquitetura e protocolo documentados;
 - Fase 1: física e renderização local;
@@ -23,9 +23,21 @@ O projeto está na versão **0.9.0** e está consolidado até a **Fase 8**:
 - Fase 8: Modo Arcano multiplayer completo, com economia privada, ativação dos
   vinte especiais, seleção autoritativa de alvos, efeitos físicos sincronizados,
   Rebobinar, Tempo Congelado e Bola Mágica em rede.
+- Fase 9: oponente local por IA nos níveis Fácil, Normal e Difícil, com análise
+  geométrica de caçapas, decisão que evita mirar deliberadamente na bola 8 antes
+  da hora, jogada de segurança, variação de precisão por nível e decisões
+  automáticas de loja e especiais no Modo Arcano.
+- Fase 10: cabeçalho responsivo com menus compactos de partida e áudio, central
+  de Ajuda com regras e guia dos 20 especiais, foco de teclado, semântica de
+  diálogos, pausa automática da partida local quando a aba fica oculta e
+  bateria consolidada de testes técnicos e visuais.
 
 O multiplayer clássico e o Arcano estão disponíveis. Para criar uma sala
 Arcana, selecione **Modo Arcano** antes de abrir o Multiplayer.
+
+Para jogar contra o computador, escolha **IA: Fácil**, **IA: Normal** ou
+**IA: Difícil** no seletor de oponente. A pessoa joga como **Você** no assento 1;
+a IA controla o assento 2 e usa a mesma física e as mesmas regras da partida local.
 
 ## Como executar
 
@@ -107,8 +119,11 @@ O servidor também expõe:
 - [Arquitetura e fases](docs/architecture.md)
 - [Protocolo WebSocket](docs/protocol.md)
 
-## Limites desta entrega
+## Validação da versão 1.0
 
-- IA pertence à Fase 9;
-- A validação ampla de balanceamento e combinações fica para a etapa de testes
-  de produto; esta entrega recebe apenas verificação técnica mínima.
+Execute `npm test` para rodar a bateria técnica completa das Fases 6 a 10. O
+polimento visual deve ser conferido em desktop e celular, especialmente após
+alterações no cabeçalho, inventário, loja ou placar.
+
+As salas multiplayer vivem na memória do processo Node. Uma reinicialização ou
+novo deploy encerra as salas ativas, embora não afete partidas futuras.

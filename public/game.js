@@ -49,6 +49,8 @@
 
   let lastBallSoundAt = 0;
   let lastCushionSoundAt = 0;
+  let countdownTurnToken = "";
+  let lastCountdownSecond = null;
 
   let accumulator = 0;
   let lastTime = performance.now();
@@ -70,6 +72,22 @@
     requestRematch: null,
     leave: null
   };
+
+  const aiMatch = {
+    enabled: false,
+    seat: 2,
+    difficulty: "normal",
+    timer: null,
+    turnToken: null,
+    thinking: false,
+    lastPlan: null
+  };
+
+  const focusPause = {
+    active: false
+  };
+
+  let lastHelpFocus = null;
 
   const KEY_ACTIONS = new Map([
     ["Escape", "cancel"],
@@ -122,6 +140,9 @@
     setupCanvas();
     bindEvents();
     resetSpinUI();
+    renderHelpGuide();
+    updateAudioUI();
+    setOpponent(dom.opponentSelect.value);
     setMode("classic");
     updateScoreboard();
     updateTurnUI();
@@ -161,6 +182,19 @@
     dom.gameOverExitButton = document.getElementById("gameOverExitButton");
     dom.gameOverRematchStatus = document.getElementById("gameOverRematchStatus");
     dom.modeSelect = document.getElementById("modeSelect");
+    dom.opponentSelect = document.getElementById("opponentSelect");
+    dom.controls = document.getElementById("controls");
+    dom.gameMenuButton = document.getElementById("gameMenuButton");
+    dom.gameMenuSummary = document.getElementById("gameMenuSummary");
+    dom.gameMenu = document.getElementById("gameMenu");
+    dom.audioMenuButton = document.getElementById("audioMenuButton");
+    dom.audioMenuSummary = document.getElementById("audioMenuSummary");
+    dom.audioMenu = document.getElementById("audioMenu");
+    dom.helpButton = document.getElementById("helpButton");
+    dom.helpOverlay = document.getElementById("helpOverlay");
+    dom.helpCloseButton = document.getElementById("helpCloseButton");
+    dom.specialGuide = document.getElementById("specialGuide");
+    dom.multiplayerButton = document.getElementById("multiplayerButton");
     dom.shopButton = document.getElementById("shopButton");
     dom.shopOverlay = document.getElementById("shopOverlay");
     dom.shopOffers = document.getElementById("shopOffers");
@@ -238,20 +272,17 @@
     });
 
     dom.audioButton.addEventListener("click", () => {
-      const ok = AudioSys.ensure();
-      dom.audioButton.textContent = ok ? "Som: ligado" : "Som: indisponível";
-      if (ok) AudioSys.playClick();
+      const shouldEnable = !AudioSys.isEnabled();
+      const enabled = AudioSys.setEnabled(shouldEnable);
+      updateAudioUI();
+      if (enabled) AudioSys.playClick();
     });
 
     dom.musicButton.addEventListener("click", () => {
       const shouldEnable = !AudioSys.isAmbientEnabled();
       const enabled = AudioSys.setAmbient(shouldEnable);
-      dom.musicButton.setAttribute("aria-pressed", String(enabled));
-      dom.musicButton.textContent = enabled ? "Música: ligada" : "Música: desligada";
-      if (AudioSys.isEnabled()) {
-        dom.audioButton.textContent = "Som: ligado";
-        AudioSys.playClick();
-      }
+      updateAudioUI();
+      if (enabled && AudioSys.isEnabled()) AudioSys.playClick();
     });
 
     dom.spinReset.addEventListener("click", () => {
@@ -305,6 +336,33 @@
       startNewMatch();
     });
 
+    dom.opponentSelect.addEventListener("change", (e) => {
+      AudioSys.ensure();
+      AudioSys.playClick();
+      setOpponent(e.target.value);
+      startNewMatch();
+    });
+
+    dom.gameMenuButton.addEventListener("click", () => {
+      AudioSys.ensure();
+      AudioSys.playClick();
+      toggleControlMenu(dom.gameMenu, dom.gameMenuButton);
+    });
+
+    dom.audioMenuButton.addEventListener("click", () => {
+      AudioSys.ensure();
+      AudioSys.playClick();
+      toggleControlMenu(dom.audioMenu, dom.audioMenuButton);
+    });
+
+    dom.helpButton.addEventListener("click", openHelp);
+    dom.helpCloseButton.addEventListener("click", closeHelp);
+    dom.helpOverlay.addEventListener("pointerdown", (e) => {
+      if (e.target === dom.helpOverlay) closeHelp();
+    });
+
+    dom.multiplayerButton.addEventListener("click", () => closeControlMenus());
+
     dom.shopButton.addEventListener("click", () => {
       AudioSys.ensure();
       toggleShop();
@@ -326,6 +384,10 @@
       AudioSys.ensure();
       AudioSys.playClick();
       cancelSpecialTarget();
+    });
+
+    document.addEventListener("pointerdown", (e) => {
+      if (!e.target.closest(".controlMenuWrap")) closeControlMenus();
     });
 
     canvas.addEventListener("pointermove", onCanvasPointerMove);
@@ -366,7 +428,11 @@
       const action = KEY_ACTIONS.get(e.key);
 
       if (action === "cancel") {
-        if (pendingSpecialTarget) {
+        if (!dom.helpOverlay.classList.contains("hidden")) {
+          closeHelp();
+        } else if (isControlMenuOpen()) {
+          closeControlMenus(true);
+        } else if (pendingSpecialTarget) {
           cancelSpecialTarget();
         } else if (game.players[game.currentSeat - 1].shop.open) {
           closeShop();
@@ -384,6 +450,157 @@
         toggleShop();
       }
     });
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+  }
+
+  function toggleControlMenu(menu, button) {
+    const shouldOpen = menu.classList.contains("hidden");
+    closeControlMenus();
+    if (!shouldOpen) return;
+    menu.classList.remove("hidden");
+    button.setAttribute("aria-expanded", "true");
+  }
+
+  function closeControlMenus(restoreFocus = false) {
+    const openButton = [dom.gameMenuButton, dom.audioMenuButton]
+      .find((button) => button && button.getAttribute("aria-expanded") === "true");
+    [
+      [dom.gameMenu, dom.gameMenuButton],
+      [dom.audioMenu, dom.audioMenuButton]
+    ].forEach(([menu, button]) => {
+      if (menu) menu.classList.add("hidden");
+      if (button) button.setAttribute("aria-expanded", "false");
+    });
+    if (restoreFocus && openButton) openButton.focus();
+  }
+
+  function isControlMenuOpen() {
+    return !dom.gameMenu.classList.contains("hidden")
+      || !dom.audioMenu.classList.contains("hidden");
+  }
+
+  function updateAudioUI() {
+    const effectsEnabled = AudioSys.isEnabled();
+    const musicEnabled = AudioSys.isAmbientEnabled();
+    dom.audioButton.setAttribute("aria-pressed", String(effectsEnabled));
+    dom.musicButton.setAttribute("aria-pressed", String(musicEnabled));
+    dom.audioButton.textContent = effectsEnabled ? "Efeitos: ligados" : "Efeitos: desligados";
+    dom.musicButton.textContent = musicEnabled ? "Música: ligada" : "Música: desligada";
+    dom.audioMenuSummary.textContent = effectsEnabled && musicEnabled
+      ? "tudo ligado"
+      : effectsEnabled
+        ? "efeitos"
+        : musicEnabled
+          ? "música"
+          : "desligado";
+  }
+
+  function updateGameMenuSummary() {
+    const mode = dom.modeSelect.value === "arcane" ? "Arcano" : "Clássico";
+    const opponents = {
+      local: "local",
+      ai_easy: "IA fácil",
+      ai_normal: "IA normal",
+      ai_hard: "IA difícil"
+    };
+    dom.gameMenuSummary.textContent = `${mode} · ${opponents[dom.opponentSelect.value] || "local"}`;
+  }
+
+  function openHelp() {
+    closeControlMenus();
+    lastHelpFocus = document.activeElement;
+    dom.helpOverlay.classList.remove("hidden");
+    dom.helpCloseButton.focus();
+  }
+
+  function closeHelp() {
+    if (dom.helpOverlay.classList.contains("hidden")) return;
+    dom.helpOverlay.classList.add("hidden");
+    if (lastHelpFocus && typeof lastHelpFocus.focus === "function") lastHelpFocus.focus();
+    lastHelpFocus = null;
+  }
+
+  function renderHelpGuide() {
+    const usage = {
+      ghost_aim: "Ative no inventário antes de mirar; a prévia ampliada vale para a próxima tacada.",
+      perfect_force: "Ative no inventário e solte a força dentro da faixa verde.",
+      soft_touch: "Ative antes da tacada; o efeito é aplicado automaticamente à bola branca.",
+      expanded_vision: "Ative antes de mirar para estender a linha de previsão.",
+      stabilizer: "Ative antes da tacada; ele reduz automaticamente o efeito lateral.",
+      ghost_ball: "Ative antes de jogar; a primeira bola atingida recebe o efeito fantasma.",
+      golden_pocket: "Clique em Usar e depois escolha na mesa a caçapa que dará o bônus.",
+      pressure: "Ative no seu turno; a força da próxima tacada do adversário ficará instável.",
+      light_magnet: "Clique em Usar e escolha uma caçapa; uma bola próxima será puxada para ela.",
+      double_shot: "Ative antes da tacada; se não encaçapar, você ganha uma tentativa extra mais fraca.",
+      magnetic_ball: "Clique em Usar e selecione a bola que será atraída pela caçapa mais próxima.",
+      rewind: "Use no começo do seu turno para desfazer a última tacada válida do adversário.",
+      shield_pocket: "Clique em Usar e escolha uma caçapa; ela bloqueia as bolas do adversário durante o próximo turno dele.",
+      ice_zone: "Clique em Usar e marque uma área da mesa; bolas ali deslizam mais por dois turnos.",
+      sticky_zone: "Clique em Usar e marque uma área; bolas ali perdem velocidade por dois turnos.",
+      position_swap: "Clique em Usar e selecione uma bola para trocar de lugar com a branca.",
+      time_freeze: "Ative antes da tacada; após o primeiro contato, mova a mira durante a breve pausa.",
+      ghost_hand: "Clique em Usar e escolha uma posição livre para recolocar a bola branca.",
+      portal_pocket: "Clique em Usar e selecione duas caçapas para conectá-las durante um turno.",
+      explosive_ball: "Clique em Usar e escolha uma bola; ela empurrará as vizinhas quando for atingida."
+    };
+
+    const groups = Specials.getCatalog().reduce((result, special) => {
+      if (!result[special.rarity]) result[special.rarity] = [];
+      result[special.rarity].push(special);
+      return result;
+    }, {});
+
+    dom.specialGuide.innerHTML = ["common", "uncommon", "rare", "legendary"]
+      .map((rarity, index) => {
+        const items = groups[rarity] || [];
+        const name = Specials.RARITY_NAMES[rarity] || rarity;
+        return `
+          <details class="specialGuideGroup ${rarity}" ${index === 0 ? "open" : ""}>
+            <summary><span>${name}</span><small>${items.length} efeitos</small></summary>
+            <div class="specialGuideGrid">
+              ${items.map((special) => `
+                <article class="guideSpecialCard">
+                  <div class="guideSpecialIcon">${ICON_EMOJI[special.icon] || "✦"}</div>
+                  <div>
+                    <h4>${special.name}</h4>
+                    <span class="guideUseType">${getUseTypeLabel(special.useType, special.maxUses, special.cooldownTurns)}</span>
+                    <p>${special.description}</p>
+                    <small><b>Como usar:</b> ${usage[special.id] || "Ative pelo inventário antes da tacada."}</small>
+                  </div>
+                </article>
+              `).join("")}
+            </div>
+          </details>
+        `;
+      }).join("");
+  }
+
+  function handleVisibilityChange() {
+    if (networkMatch.active || !game.turn || !game.turn.timer) return;
+
+    if (document.hidden) {
+      if (
+        game.phase === "playing"
+        && !game.turn.timer.paused
+        && !shotActive
+        && !Physics.ballsMoving()
+      ) {
+        Rules.pauseTurnTimer(game, Date.now());
+        focusPause.active = true;
+        cancelDrag();
+        if (isAITurn()) cancelAITurn();
+        setStateLabel("Partida pausada");
+      }
+      return;
+    }
+
+    if (!focusPause.active) return;
+    focusPause.active = false;
+    Rules.resumeTurnTimer(game, Date.now());
+    updateShotTimer();
+    setStateLabel(isAITurn() ? "IA retomando…" : "Sua vez");
+    showToast("Partida retomada", "info");
   }
 
   function setMode(mode) {
@@ -410,6 +627,7 @@
     updateScoreboard();
     updateInventoryUI();
     updateActiveEffectsUI();
+    updateGameMenuSummary();
   }
 
   function onCanvasPointerMove(e) {
@@ -538,59 +756,7 @@
         return;
       }
 
-      currentShotStart = {
-        match: JSON.parse(JSON.stringify(game)),
-        physics: Physics.getSnapshot(),
-        shooterSeat: game.currentSeat
-      };
-      const idealPower = calculateIdealPower(drag.angle);
-      const prepared = Rules.prepareShot(game, drag.power, spin, {
-        idealPower
-      });
-
-      Physics.setShotModifiers({
-        softTouch: Boolean(prepared.effects.soft_touch),
-        ghostBallArmed: Boolean(prepared.effects.ghost_ball),
-        lightMagnetPocketId: prepared.effects.light_magnet
-          ? prepared.effects.light_magnet.target.pocketId
-          : null,
-        magneticBallId: prepared.effects.magnetic_ball
-          ? prepared.effects.magnetic_ball.target.ballId
-          : null,
-        shieldPocketId: prepared.effects.shield_pocket
-          ? prepared.effects.shield_pocket.target.pocketId
-          : null,
-        zones: prepared.effects.table_zones || [],
-        timeFreezeArmed: Boolean(prepared.effects.time_freeze),
-        portalPocketIds: prepared.effects.portal_pocket
-          ? prepared.effects.portal_pocket.target.pocketIds
-          : null,
-        explosiveBallId: prepared.effects.explosive_ball
-          ? prepared.effects.explosive_ball.target.ballId
-          : null
-      });
-
-      const ok = Physics.shoot(
-        drag.angle,
-        prepared.power,
-        prepared.spin,
-        { openingBreak }
-      );
-
-      if (ok) {
-        currentShotEffects = prepared.effects;
-        shotActive = true;
-        Rules.pauseTurnTimer(game, Date.now());
-        setStateLabel("Simulando");
-        AudioSys.playShot(prepared.power);
-        AudioSys.playArcaneShot(Object.keys(prepared.effects));
-        showPreparedShotNotices(prepared.notices);
-        updateInventoryUI();
-        updateActiveEffectsUI();
-      } else {
-        Physics.setShotModifiers();
-        currentShotStart = null;
-      }
+      executeLocalShot(drag.angle, drag.power, spin, { openingBreak });
     }
 
     cancelDrag();
@@ -641,12 +807,7 @@
   }
 
   function isOpeningBreak() {
-    return Boolean(
-      game.phase === "playing" &&
-      game.turn &&
-      game.turn.number === 1 &&
-      game.turn.shotNumber === 1
-    );
+    return Rules.isOpeningBreak(game);
   }
 
   function canPlaceOpeningCue() {
@@ -666,14 +827,79 @@
     if (shotActive) return false;
     if (pendingSpecialTarget) return false;
     if (networkMatch.active && networkMatch.seat !== game.currentSeat) return false;
+    if (isAITurn()) return false;
     const currentPlayer = game.players[game.currentSeat - 1];
     if (currentPlayer.shop.open) return false;
     const cue = Physics.getCueBall();
     return !!cue && cue.active && !Physics.ballsMoving();
   }
 
+  function executeLocalShot(angle, power, shotSpin, options = {}) {
+    if (networkMatch.active || game.phase !== "playing" || shotActive || Physics.ballsMoving()) {
+      return false;
+    }
+
+    currentShotStart = {
+      match: JSON.parse(JSON.stringify(game)),
+      physics: Physics.getSnapshot(),
+      shooterSeat: game.currentSeat
+    };
+    const idealPower = calculateIdealPower(angle);
+    const prepared = Rules.prepareShot(game, power, shotSpin, { idealPower });
+
+    Physics.setShotModifiers({
+      softTouch: Boolean(prepared.effects.soft_touch),
+      ghostBallArmed: Boolean(prepared.effects.ghost_ball),
+      lightMagnetPocketId: prepared.effects.light_magnet
+        ? prepared.effects.light_magnet.target.pocketId
+        : null,
+      magneticBallId: prepared.effects.magnetic_ball
+        ? prepared.effects.magnetic_ball.target.ballId
+        : null,
+      shieldPocketId: prepared.effects.shield_pocket
+        ? prepared.effects.shield_pocket.target.pocketId
+        : null,
+      zones: prepared.effects.table_zones || [],
+      timeFreezeArmed: Boolean(prepared.effects.time_freeze),
+      portalPocketIds: prepared.effects.portal_pocket
+        ? prepared.effects.portal_pocket.target.pocketIds
+        : null,
+      explosiveBallId: prepared.effects.explosive_ball
+        ? prepared.effects.explosive_ball.target.ballId
+        : null
+    });
+
+    const ok = Physics.shoot(
+      angle,
+      prepared.power,
+      prepared.spin,
+      { openingBreak: Boolean(options.openingBreak) }
+    );
+
+    if (!ok) {
+      Physics.setShotModifiers();
+      currentShotStart = null;
+      return false;
+    }
+
+    if (options.openingBreak) Rules.consumeOpeningBreak(game);
+    currentShotEffects = prepared.effects;
+    shotActive = true;
+    Rules.pauseTurnTimer(game, Date.now());
+    setStateLabel("Simulando");
+    AudioSys.playShot(prepared.power);
+    AudioSys.playArcaneShot(Object.keys(prepared.effects));
+    showPreparedShotNotices(prepared.notices);
+    updateInventoryUI();
+    updateActiveEffectsUI();
+    return true;
+  }
+
   function startNewMatch() {
+    cancelAITurn();
+    focusPause.active = false;
     Rules.resetMatch(game, game.mode, Date.now());
+    configureLocalPlayers();
 
     Physics.reset();
     breakPlacement.active = false;
@@ -699,7 +925,9 @@
     updateInventoryUI();
     updateActiveEffectsUI();
     updateMagicBallUI();
-    setStateLabel("Arraste a branca ↕ antes da saída");
+    setStateLabel(aiMatch.enabled
+      ? "Sua saída — arraste a branca ↕ antes da tacada"
+      : "Arraste a branca ↕ antes da saída");
   }
 
   function applyNetworkMatchSnapshot(snapshot) {
@@ -708,6 +936,9 @@
     game.mode = snapshot.mode === "arcane" ? "arcane" : "classic";
     game.phase = snapshot.phase || "playing";
     game.currentSeat = Number(snapshot.currentSeat) || 1;
+    game.openingBreakPending = typeof snapshot.openingBreakPending === "boolean"
+      ? snapshot.openingBreakPending
+      : Boolean(snapshot.turn && snapshot.turn.number === 1 && snapshot.turn.shotNumber === 1);
     game.winnerSeat = snapshot.winnerSeat || null;
     game.gameEndReason = snapshot.gameEndReason || "";
     game.zones = Array.isArray(snapshot.zones)
@@ -767,7 +998,9 @@
   }
 
   function getHudPlayer() {
-    const seat = networkMatch.active ? networkMatch.seat : game.currentSeat;
+    const seat = networkMatch.active
+      ? networkMatch.seat
+      : (aiMatch.enabled ? 1 : game.currentSeat);
     return game.players.find((player) => player.seat === seat) || game.players[0];
   }
 
@@ -782,6 +1015,48 @@
     });
     updateInventoryUI();
     updateActiveEffectsUI();
+    updateGameMenuSummary();
+  }
+
+  function setOpponent(value) {
+    const match = /^ai_(easy|normal|hard)$/.exec(String(value || ""));
+    aiMatch.enabled = Boolean(match);
+    aiMatch.difficulty = match ? ArcaneAI.normalizeDifficulty(match[1]) : "normal";
+    dom.opponentSelect.value = aiMatch.enabled
+      ? `ai_${aiMatch.difficulty}`
+      : "local";
+    cancelAITurn();
+    updateGameMenuSummary();
+  }
+
+  function configureLocalPlayers() {
+    const first = game.players[0];
+    const second = game.players[1];
+    if (first) first.name = aiMatch.enabled ? "Você" : "Jogador 1";
+    if (second) {
+      const difficulty = ArcaneAI.DIFFICULTIES[aiMatch.difficulty];
+      second.name = aiMatch.enabled
+        ? `Arcana IA · ${difficulty.label}`
+        : "Jogador 2";
+    }
+  }
+
+  function isAITurn() {
+    return Boolean(
+      aiMatch.enabled
+      && !networkMatch.active
+      && game.phase === "playing"
+      && game.currentSeat === aiMatch.seat
+    );
+  }
+
+  function cancelAITurn() {
+    if (aiMatch.timer) clearTimeout(aiMatch.timer);
+    aiMatch.timer = null;
+    aiMatch.turnToken = null;
+    aiMatch.thinking = false;
+    aiMatch.lastPlan = null;
+    document.body.classList.remove("ai-thinking");
   }
 
   function setNetworkPhysicsSnapshot(snapshot, moving) {
@@ -851,6 +1126,11 @@
   }
 
   function enterMultiplayer(options) {
+    cancelAITurn();
+    focusPause.active = false;
+    aiMatch.enabled = false;
+    dom.opponentSelect.value = "local";
+    updateGameMenuSummary();
     networkMatch.active = true;
     networkMatch.seat = Number(options.seat) || null;
     networkMatch.roomCode = options.roomCode || null;
@@ -865,6 +1145,7 @@
 
     document.body.classList.add("network-match");
     dom.modeSelect.disabled = true;
+    dom.opponentSelect.disabled = true;
     dom.resetButton.textContent = "Sair da sala";
     dom.gameOverExitButton.classList.remove("hidden");
     dom.gameOverRematchStatus.classList.add("hidden");
@@ -981,6 +1262,7 @@
     AudioSys.playShopOpen();
     renderShop();
     setStateLabel("Loja aberta");
+    window.setTimeout(() => dom.shopCloseButton.focus(), 0);
   }
 
   function applyMultiplayerShopRerolled(payload) {
@@ -1093,6 +1375,7 @@
 
   function applyMultiplayerShotAccepted(payload = {}) {
     if (!networkMatch.active) return;
+    if (payload.openingBreak) game.openingBreakPending = false;
     shotActive = true;
     currentShotEffects = payload.effects ? JSON.parse(JSON.stringify(payload.effects)) : {};
     networkMatch.freezeActive = false;
@@ -1207,6 +1490,7 @@
     networkPhysicsTarget = null;
     document.body.classList.remove("network-match");
     dom.modeSelect.disabled = false;
+    dom.opponentSelect.disabled = false;
     dom.modeSelect.value = "classic";
     dom.resetButton.textContent = "Nova partida";
     dom.gameOverButton.textContent = "Nova partida";
@@ -1350,6 +1634,106 @@
     updateParticles(dt);
     updateForceUI();
     updateShotTimer();
+    maybeScheduleAITurn();
+  }
+
+  function maybeScheduleAITurn() {
+    if (!isAITurn()) {
+      if (aiMatch.timer) clearTimeout(aiMatch.timer);
+      aiMatch.timer = null;
+      aiMatch.turnToken = null;
+      aiMatch.thinking = false;
+      document.body.classList.remove("ai-thinking");
+      return;
+    }
+
+    if (
+      shotActive || Physics.ballsMoving() || pendingSpecialTarget
+      || game.players[aiMatch.seat - 1].shop.open
+    ) return;
+
+    const token = `${game.turn ? game.turn.number : 0}:${game.turn ? game.turn.shotNumber : 0}`;
+    if (aiMatch.turnToken === token) return;
+    aiMatch.turnToken = token;
+    aiMatch.thinking = true;
+    document.body.classList.add("ai-thinking");
+    setStateLabel("IA analisando a mesa…");
+
+    const settings = ArcaneAI.DIFFICULTIES[aiMatch.difficulty];
+    aiMatch.timer = setTimeout(() => {
+      aiMatch.timer = null;
+      runAITurn(token);
+    }, settings.thinkMs);
+  }
+
+  function runAITurn(token) {
+    if (!isAITurn() || aiMatch.turnToken !== token || shotActive || Physics.ballsMoving()) {
+      cancelAITurn();
+      return;
+    }
+
+    const world = {
+      balls: Physics.getSnapshot(),
+      pockets: Physics.getPockets().map((pocket) => ({ ...pocket }))
+    };
+    let plan = ArcaneAI.planShot(world, {
+      difficulty: aiMatch.difficulty,
+      openingBreak: isOpeningBreak()
+    });
+
+    if (!plan) {
+      aiMatch.thinking = false;
+      document.body.classList.remove("ai-thinking");
+      setStateLabel("IA sem tacada disponível");
+      return;
+    }
+
+    if (game.mode === "arcane") {
+      prepareAIArcaneTurn(plan, world);
+      plan = ArcaneAI.planShot({
+        balls: Physics.getSnapshot(),
+        pockets: world.pockets
+      }, {
+        difficulty: aiMatch.difficulty,
+        openingBreak: isOpeningBreak()
+      }) || plan;
+      const aiPlayer = game.players[aiMatch.seat - 1];
+      if (aiPlayer.activeEffects.perfect_force) {
+        plan.power = calculateIdealPower(plan.angle);
+      }
+    }
+
+    aiMatch.lastPlan = plan;
+    aiMatch.thinking = false;
+    document.body.classList.remove("ai-thinking");
+    aim.angle = plan.angle;
+    setStateLabel(plan.type === "pot" ? "IA tenta a caçapa" : "IA joga com segurança");
+    executeLocalShot(plan.angle, plan.power, plan.spin, {
+      openingBreak: isOpeningBreak()
+    });
+  }
+
+  function prepareAIArcaneTurn(plan, world) {
+    const player = game.players[aiMatch.seat - 1];
+    const offer = ArcaneAI.chooseOffer(player);
+    if (offer) {
+      Rules.openShop(game, Date.now());
+      const purchase = Rules.buySpecial(game, offer.offerId);
+      Rules.closeShop(game, Date.now());
+      if (purchase.ok) {
+        showToast(`${player.name} comprou ${purchase.instance.name}`, "arcana");
+        AudioSys.playBuy();
+      }
+    }
+
+    const special = ArcaneAI.chooseSpecial(player, plan, world, {
+      difficulty: aiMatch.difficulty
+    });
+    if (special) activateSpecial(special.slotIndex, special.target);
+    updateScoreboard();
+    updateInventoryUI();
+    updateActiveEffectsUI();
+    updateGameMenuSummary();
   }
 
   function updateShotTimer() {
@@ -1360,6 +1744,7 @@
 
     dom.shotTimer.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
     dom.shotTimer.classList.toggle("warning", remainingMs <= CONFIG.turn.warningMs);
+    updateCountdownSound(totalSeconds, remainingMs);
 
     if (networkMatch.active) return;
 
@@ -1454,6 +1839,43 @@
 
     AudioSys.playPocket();
     AudioSys.playBallReturn(ball.kind);
+  }
+
+  function updateCountdownSound(totalSeconds, remainingMs) {
+    const turnToken = game.turn
+      ? `${game.currentSeat}:${game.turn.number}:${game.turn.shotNumber}`
+      : "";
+
+    if (turnToken !== countdownTurnToken) {
+      countdownTurnToken = turnToken;
+      lastCountdownSecond = null;
+    }
+
+    const warningSeconds = Math.ceil(CONFIG.turn.warningMs / 1000);
+    if (remainingMs > CONFIG.turn.warningMs || totalSeconds <= 0) {
+      lastCountdownSecond = null;
+      return;
+    }
+
+    const timerPaused = Boolean(game.turn && game.turn.timer && game.turn.timer.paused);
+    const currentPlayer = game.players[game.currentSeat - 1];
+    const shouldAlert = AudioSys.isEnabled()
+      && !document.hidden
+      && !timerPaused
+      && !shotActive
+      && !Physics.ballsMoving()
+      && !(currentPlayer && currentPlayer.shop.open)
+      && !isAITurn()
+      && (!networkMatch.active || networkMatch.seat === game.currentSeat);
+
+    if (
+      shouldAlert
+      && totalSeconds <= warningSeconds
+      && totalSeconds !== lastCountdownSecond
+    ) {
+      lastCountdownSecond = totalSeconds;
+      AudioSys.playCountdownTick(totalSeconds);
+    }
   }
 
   function onShot() {}
@@ -1690,6 +2112,7 @@
     }
 
     dom.gameOverOverlay.classList.remove("hidden");
+    window.setTimeout(() => dom.gameOverButton.focus(), 0);
   }
 
   function hideGameOver() {
@@ -1772,6 +2195,16 @@
       return;
     }
 
+    if (currentShotStart) {
+      lastResolvedShot = currentShotStart;
+      currentShotStart = null;
+    }
+
+    if (isAITurn()) {
+      showToast("Aguarde a jogada da IA", "info");
+      return;
+    }
+
     if (currentPlayer.shop.open) {
       closeShop();
     } else {
@@ -1795,6 +2228,7 @@
     AudioSys.playShopOpen();
     renderShop();
     setStateLabel("Loja aberta");
+    window.setTimeout(() => dom.shopCloseButton.focus(), 0);
   }
 
   function closeShop() {
@@ -1805,6 +2239,9 @@
 
     Rules.closeShop(game, Date.now());
     dom.shopOverlay.classList.add("hidden");
+    if (document.activeElement && dom.shopOverlay.contains(document.activeElement)) {
+      dom.shopButton.focus();
+    }
 
     if (game.phase === "playing") {
       setStateLabel("Sua vez");
@@ -1973,6 +2410,7 @@
           && !shotActive
           && !Physics.ballsMoving()
           && !currentPlayer.shop.open
+          && !isAITurn()
           && (!networkMatch.active || networkMatch.seat === game.currentSeat);
 
         let usesText = "";
@@ -1998,7 +2436,7 @@
             <button class="use" data-slot-index="${i}" ${readyToUse ? "" : "disabled"}>
               ${alreadyActive ? "Armado" : "Usar"}
             </button>
-            <button class="discard" data-slot-index="${i}" ${networkMatch.active && networkMatch.seat !== game.currentSeat ? "disabled" : ""}>Descartar</button>
+            <button class="discard" data-slot-index="${i}" ${(isAITurn() || (networkMatch.active && networkMatch.seat !== game.currentSeat)) ? "disabled" : ""}>Descartar</button>
           </div>
         `;
       }
@@ -2033,6 +2471,10 @@
   }
 
   function useSpecialFromSlot(slotIndex) {
+    if (isAITurn()) {
+      showToast("Aguarde a jogada da IA", "info");
+      return;
+    }
     const player = getHudPlayer();
     const instance = player.inventory[slotIndex];
     if (!instance) return;
@@ -2267,7 +2709,7 @@
       return;
     }
 
-    const player = networkMatch.active ? getHudPlayer() : game.players[game.currentSeat - 1];
+    const player = getHudPlayer();
     const effects = Object.values(player.activeEffects);
 
     if (effects.length === 0) {

@@ -212,6 +212,46 @@ o DOM informa raridade, vida restante e bônus de toque. A fila local emite os
 mesmos seis nomes `arcane_*` do protocolo e também os publica no navegador como
 `CustomEvent("arcane-pool:event")` para manter a apresentação desacoplada.
 
+## Oponente por IA — Fase 9
+
+O módulo `public/ai.js` é independente de DOM e de renderização. Ele recebe um
+snapshot da física e devolve somente ângulo, força, efeito e alvos escolhidos.
+Assim, a tacada continua passando por `rules.js` e `physics.js`, exatamente como
+uma tacada humana local, sem criar regras paralelas ou interferir no servidor
+autoritativo do multiplayer.
+
+O planejador procura combinações bola-caçapa por geometria de bola fantasma,
+descarta trajetórias obstruídas, pontua distância e ângulo de corte e evita a
+bola 8 enquanto ainda existem bolas normais. Sem encaçapada direta viável, ele
+prioriza contato seguro com uma bola liberada. Fácil, Normal e Difícil variam o
+tempo de decisão, a quantidade de candidatos considerada e os erros de mira e
+força.
+
+No Modo Arcano, a IA compra ofertas compatíveis com seu saldo e inventário e
+pode armar automaticamente especiais cujo alvo seja resolvido sem interação
+manual. Efeitos puramente visuais ou que exijam reposicionamento interativo não
+são desperdiçados pela IA.
+
+## Polimento e QA — Fase 10
+
+O cabeçalho usa três composições responsivas: uma linha em telas largas, duas
+linhas em desktops estreitos e uma faixa compacta no celular. Configuração de
+modo, oponente, nova partida e multiplayer ficam no menu Jogar; efeitos sonoros
+e música ficam no menu Áudio. A Ajuda reúne regras, controles, modo Arcano e o
+guia de uso dos 20 especiais. Os painéis de efeito e inventário continuam
+recolhíveis e fora do centro útil.
+
+Partidas locais pausam o cronômetro antes da tacada quando a aba fica oculta e
+retomam com o mesmo tempo ao voltar. O multiplayer não tenta pausar o servidor,
+que permanece como autoridade de tempo. Controles possuem foco visível, estados
+dinâmicos usam regiões `aria-live`, diálogos declaram sua semântica e animações
+não essenciais respeitam `prefers-reduced-motion`.
+
+A bateria `npm test` consolida os smokes de regras, economia, multiplayer,
+especiais, Bola Mágica, IA e contratos estáticos da interface final. O playtest
+visual cobre inicialização, tacada, Modo Arcano com IA, overlays, desktop
+estreito e viewport móvel.
+
 ## Segurança e informações privadas
 
 - O cliente nunca envia saldo, inventário final, placar ou posição resultante.
