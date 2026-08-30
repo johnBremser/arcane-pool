@@ -14,6 +14,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 const PORT = process.env.PORT === undefined ? 5201 : Number(process.env.PORT);
 const PUBLIC_DIR = path.resolve(__dirname, "public");
 const RECONNECT_WINDOW_MS = CONFIG.network.reconnectWindowMs;
+const MATCH_PAUSE_MS = 20000;
 const ACTIVE_CLIENT_TYPES = [
   "hello",
   "ping",
@@ -24,6 +25,8 @@ const ACTIVE_CLIENT_TYPES = [
   "set_ready",
   "start_match",
   "request_rematch",
+  "pause_match",
+  "resume_match",
   "shoot",
   "cancel_aim",
   "request_snapshot",
@@ -269,12 +272,20 @@ function publicRematch(room) {
 }
 
 function matchPayload(room, privateSeat = null) {
+  const now = Date.now();
   const payload = {
     status: room.status,
     match: Rules.publicSnapshot(room.match),
     physics: room.world.getSnapshot(),
     moving: room.simulating,
-    rematch: room.status === "finished" ? publicRematch(room) : null
+    rematch: room.status === "finished" ? publicRematch(room) : null,
+    pause: room.pause
+      ? {
+          seat: room.pause.seat,
+          playerName: room.pause.playerName,
+          remainingMs: Math.max(0, room.pause.deadlineAt - now)
+        }
+      : null
   };
   if (privateSeat) payload.privatePlayer = Rules.privatePlayerSnapshot(room.match, privateSeat);
   return payload;
@@ -381,6 +392,7 @@ function handleCreateRoom(session, message) {
     currentShotEffects: {},
     currentShotStart: null,
     lastResolvedShot: null,
+    pause: null,
     nextStartingSeat: 1,
     rematchRequestedBy: null,
     rematchVotes: new Set(),
@@ -504,6 +516,7 @@ function startRoomMatch(room, message = null, initiatingSession = null) {
   room.currentShotEffects = {};
   room.currentShotStart = null;
   room.lastResolvedShot = null;
+  room.pause = null;
   room.nextStartingSeat = startingSeat === 1 ? 2 : 1;
   room.rematchRequestedBy = null;
   room.rematchVotes.clear();
@@ -657,6 +670,13 @@ function handleShoot(session, message) {
     sendError(session, message, "shot_in_progress", "A tacada anterior ainda está em movimento");
     return;
   }
+  if (room.pause) {
+    reply(session, message, "shot_rejected", {
+      code: "match_paused",
+      message: "A partida está pausada"
+    }, room.code);
+    return;
+  }
   if (room.match.currentSeat !== player.seat) {
     reply(session, message, "shot_rejected", {
       code: "not_your_turn",
@@ -794,11 +814,79 @@ function requireArcaneEconomyTurn(session, message) {
     sendError(session, message, "not_your_turn", ECONOMY_ERROR_MESSAGES.not_your_turn);
     return null;
   }
+  if (room.pause) {
+    sendError(session, message, "match_paused", "A partida está pausada");
+    return null;
+  }
   if (room.simulating || room.world.ballsMoving()) {
     sendError(session, message, "shot_in_progress", ECONOMY_ERROR_MESSAGES.shot_in_progress);
     return null;
   }
   return context;
+}
+
+function resumeRoomPause(room, reason = "manual", message = null, initiatingSession = null) {
+  if (!room.pause || !room.match) return false;
+  const paused = room.pause;
+  room.pause = null;
+  Rules.resumeTurnTimer(room.match, Date.now());
+  broadcast(room, "match_resumed", {
+    reason,
+    pausedBySeat: paused.seat,
+    pausedByName: paused.playerName,
+    match: Rules.publicSnapshot(room.match)
+  }, message, initiatingSession);
+  return true;
+}
+
+function handlePauseMatch(session, message) {
+  const context = requireRoomPlayer(session, message);
+  if (!context) return;
+  const { room, player } = context;
+  if (room.status !== "playing" || !room.match || !room.world) {
+    sendError(session, message, "wrong_phase", "A partida não está em andamento");
+    return;
+  }
+  if (room.pause) {
+    sendError(session, message, "already_paused", "A partida já está pausada");
+    return;
+  }
+  if (room.match.currentSeat !== player.seat) {
+    sendError(session, message, "not_your_turn", "Somente quem está na vez pode pausar");
+    return;
+  }
+  if (room.simulating || room.world.ballsMoving()) {
+    sendError(session, message, "shot_in_progress", "Pause somente entre tacadas");
+    return;
+  }
+  if (Rules.getPlayer(room.match, player.seat).shop.open) {
+    sendError(session, message, "shop_open", "Feche a Loja Arcana antes de pausar");
+    return;
+  }
+
+  Rules.pauseTurnTimer(room.match, Date.now());
+  room.pause = {
+    seat: player.seat,
+    playerName: player.name,
+    deadlineAt: Date.now() + MATCH_PAUSE_MS
+  };
+  broadcast(room, "match_paused", {
+    seat: player.seat,
+    playerName: player.name,
+    durationMs: MATCH_PAUSE_MS,
+    remainingMs: MATCH_PAUSE_MS,
+    match: Rules.publicSnapshot(room.match)
+  }, message, session);
+}
+
+function handleResumeMatch(session, message) {
+  const context = requireRoomPlayer(session, message);
+  if (!context) return;
+  if (!context.room.pause) {
+    sendError(session, message, "not_paused", "A partida não está pausada");
+    return;
+  }
+  resumeRoomPause(context.room, "manual", message, session);
 }
 
 function sendEconomyState(session, room, type, message, extra = {}) {
@@ -1236,6 +1324,11 @@ function tickRooms() {
   for (const room of rooms.values()) {
     if (room.status !== "playing" || !room.match || !room.world) continue;
 
+    if (room.pause) {
+      if (now >= room.pause.deadlineAt) resumeRoomPause(room, "timeout");
+      continue;
+    }
+
     if (room.simulating) {
       room.world.step(CONFIG.physics.fixedDt);
       room.world.step(CONFIG.physics.fixedDt);
@@ -1316,6 +1409,10 @@ wss.on("connection", (socket) => {
       handleStartMatch(session, message);
     } else if (message.type === "request_rematch") {
       handleRequestRematch(session, message);
+    } else if (message.type === "pause_match") {
+      handlePauseMatch(session, message);
+    } else if (message.type === "resume_match") {
+      handleResumeMatch(session, message);
     } else if (message.type === "shoot") {
       handleShoot(session, message);
     } else if (message.type === "request_snapshot") {

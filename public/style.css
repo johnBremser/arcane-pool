@@ -277,6 +277,10 @@ input:focus-visible {
   padding-inline: 9px;
 }
 
+.popoverActions .wideAction {
+  grid-column: 1 / -1;
+}
+
 .audioPopover {
   width: 250px;
 }
@@ -507,6 +511,64 @@ input:focus-visible {
   z-index: 100;
 }
 
+#arcaneAlert {
+  position: absolute;
+  top: 5px;
+  left: 12px;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(520px, calc(100% - 390px));
+  min-height: 34px;
+  padding: 5px 12px 5px 9px;
+  border: 1px solid rgba(190, 135, 255, 0.72);
+  border-radius: 12px;
+  color: #f4edff;
+  background: linear-gradient(105deg, rgba(47, 19, 75, 0.96), rgba(19, 11, 35, 0.92));
+  box-shadow: 0 0 22px rgba(139, 92, 246, 0.28);
+  pointer-events: none;
+  animation: arcaneAlertIn 0.28s ease;
+}
+
+#arcaneAlert.hidden {
+  display: none;
+}
+
+.arcaneAlertGlyph {
+  color: #d6b9ff;
+  font-size: 20px;
+  text-shadow: 0 0 12px #b48cff;
+}
+
+.arcaneAlertCopy {
+  display: grid;
+  min-width: 0;
+}
+
+.arcaneAlertCopy small {
+  overflow: hidden;
+  color: #c9b5e9;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.7px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.arcaneAlertCopy strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes arcaneAlertIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 .toast {
   padding: 9px 16px;
   border-radius: 10px;
@@ -582,6 +644,72 @@ input:focus-visible {
 
 #gameOverOverlay.hidden {
   display: none;
+}
+
+#pauseOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 7, 13, 0.7);
+  backdrop-filter: blur(8px);
+}
+
+#pauseOverlay.hidden {
+  display: none;
+}
+
+#pauseCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  width: min(560px, calc(100vw - 36px));
+  padding: 20px;
+  border: 1px solid rgba(104, 200, 255, 0.38);
+  border-radius: 22px;
+  background: linear-gradient(155deg, rgba(25, 38, 59, 0.99), rgba(7, 13, 23, 0.99));
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.62);
+}
+
+.pauseGlyph {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  color: var(--blue);
+  background: rgba(104, 200, 255, 0.1);
+  border: 1px solid rgba(104, 200, 255, 0.35);
+  font-size: 25px;
+  font-weight: 900;
+}
+
+#pauseCard h2 {
+  margin: 2px 0 4px;
+  color: var(--gold);
+  font-size: 22px;
+}
+
+#pauseCard p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#pauseCountdown {
+  min-width: 70px;
+  color: var(--blue);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+#pauseResumeButton {
+  grid-column: 1 / -1;
+  justify-self: stretch;
 }
 
 @keyframes fadeIn {
@@ -1689,6 +1817,39 @@ body.ai-thinking #stage {
     top: 12px;
     width: calc(100vw - 24px);
     justify-content: space-between;
+  }
+}
+
+@media (max-width: 600px) {
+  #arcaneAlert {
+    right: 10px;
+    left: 10px;
+    max-width: none;
+    min-height: 25px;
+    padding-block: 3px;
+  }
+
+  .arcaneAlertGlyph {
+    font-size: 16px;
+  }
+
+  .arcaneAlertCopy small {
+    display: none;
+  }
+
+  .arcaneAlertCopy strong {
+    font-size: 10px;
+  }
+
+  #pauseCard {
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    padding: 17px;
+  }
+
+  #pauseCountdown {
+    grid-column: 1 / -1;
+    justify-self: center;
   }
 }
 

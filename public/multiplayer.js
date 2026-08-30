@@ -114,6 +114,14 @@ const Multiplayer = (() => {
       if (window.ArcaneGame) window.ArcaneGame.applyMultiplayerTurn(message.payload);
     });
 
+    Net.on("match_paused", (message) => {
+      if (window.ArcaneGame) window.ArcaneGame.applyMultiplayerPaused(message.payload);
+    });
+
+    Net.on("match_resumed", (message) => {
+      if (window.ArcaneGame) window.ArcaneGame.applyMultiplayerResumed(message.payload);
+    });
+
     Net.on("points_updated", (message) => {
       if (window.ArcaneGame) window.ArcaneGame.applyMultiplayerPlayers(message.payload);
     });
@@ -335,6 +343,7 @@ const Multiplayer = (() => {
         privatePlayer: payload.privatePlayer,
         physics: payload.physics,
         moving: payload.moving,
+        pause: payload.pause,
         sendShot: (shot) => Net.send("shoot", shot),
         sendCommand: (type, payload = {}) => Net.send(type, payload),
         requestRematch: () => Net.send("request_rematch"),

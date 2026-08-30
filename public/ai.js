@@ -11,7 +11,8 @@ const ArcaneAI = ((CONFIG) => {
       candidatePool: 4,
       thinkMs: 1050,
       breakPower: 0.88,
-      specialChance: 0.30
+      specialChance: 0.30,
+      magicBallChance: 0.45
     },
     normal: {
       label: "Normal",
@@ -20,7 +21,8 @@ const ArcaneAI = ((CONFIG) => {
       candidatePool: 2,
       thinkMs: 850,
       breakPower: 0.94,
-      specialChance: 0.58
+      specialChance: 0.58,
+      magicBallChance: 1
     },
     hard: {
       label: "Difícil",
@@ -29,7 +31,8 @@ const ArcaneAI = ((CONFIG) => {
       candidatePool: 1,
       thinkMs: 650,
       breakPower: 1,
-      specialChance: 0.82
+      specialChance: 0.82,
+      magicBallChance: 1
     }
   };
 
@@ -201,6 +204,48 @@ const ArcaneAI = ((CONFIG) => {
     };
   }
 
+  function buildMagicBallPlan(cue, balls, pockets, settings, random) {
+    const magicBalls = balls.filter((ball) => ball.active && ball.kind === "magic");
+    if (magicBalls.length === 0 || random() > settings.magicBallChance) return null;
+
+    const potCandidates = buildDirectCandidates(cue, magicBalls, balls, pockets);
+    if (potCandidates.length > 0) {
+      const chosen = potCandidates[0];
+      return Object.assign({}, chosen, {
+        type: "magic_pot",
+        targetNumber: null,
+        score: chosen.score + 160
+      });
+    }
+
+    const visible = magicBalls
+      .map((target) => ({
+        target,
+        distance: distance(cue, target),
+        clear: pathIsClear(
+          cue,
+          target,
+          balls,
+          new Set([cue.id, target.id]),
+          cue.radius,
+          2
+        )
+      }))
+      .filter((candidate) => candidate.clear)
+      .sort((a, b) => a.distance - b.distance);
+    const choice = visible[0];
+    if (!choice) return null;
+    return {
+      type: "magic_touch",
+      targetBallId: choice.target.id,
+      targetNumber: null,
+      pocketId: null,
+      angle: Math.atan2(choice.target.y - cue.y, choice.target.x - cue.x),
+      power: Math.max(0.38, Math.min(0.68, 0.38 + choice.distance / 1900)),
+      score: 120 - choice.distance * 0.08
+    };
+  }
+
   function planShot(world, options = {}) {
     const difficulty = normalizeDifficulty(options.difficulty);
     const settings = DIFFICULTIES[difficulty];
@@ -231,7 +276,8 @@ const ArcaneAI = ((CONFIG) => {
         const poolSize = Math.min(settings.candidatePool, candidates.length);
         plan = candidates[Math.floor(random() * poolSize)];
       } else {
-        plan = buildFallback(cue, targets, balls);
+        plan = buildMagicBallPlan(cue, balls, pockets, settings, random)
+          || buildFallback(cue, targets, balls);
       }
     }
 

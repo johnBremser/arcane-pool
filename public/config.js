@@ -6,7 +6,14 @@ const CONFIG = {
     height: 640,
     rail: 56,
     pocketRadius: 24,
-    captureRadius: 21
+    captureRadius: 21,
+    pocketJaw: {
+      cornerMouth: 38,
+      sideMouthHalf: 34,
+      radius: 5,
+      restitution: 0.72,
+      tangentRetention: 0.90
+    }
   },
 
   balls: {
@@ -21,7 +28,7 @@ const CONFIG = {
     restitutionBall: 0.97,
     restitutionCushion: 0.85,
     maxShotSpeed: 1500,
-    highPowerBoost: 0.20,
+    highPowerBoost: 0.74,
     highPowerExponent: 3,
 
     spin: {
@@ -37,7 +44,7 @@ const CONFIG = {
     maxDrag: 190,
     minPower: 0.045,
     openingBreak: {
-      powerMultiplier: 1.45,
+      powerMultiplier: 1,
       cueVerticalPadding: 46
     }
   },

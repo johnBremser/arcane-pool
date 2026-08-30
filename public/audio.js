@@ -2,7 +2,7 @@ const AudioSys = (() => {
   let ctx = null;
   let master = null;
   let noiseBuffer = null;
-  let enabled = false;
+  let enabled = true;
   let ambientEnabled = false;
   let ambientBus = null;
   let ambientTimer = null;

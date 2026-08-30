@@ -44,6 +44,42 @@ assert.strictEqual(direct.targetBallId, 2, "IA não deve mirar a bola 8 antes da
 assert(direct.power >= CONFIG.input.minPower && direct.power <= 1, "força deve ser válida");
 assert(Number.isFinite(direct.angle), "ângulo deve ser finito");
 
+const directWithMagic = ArcaneAI.planShot({
+  balls: directWorld.balls.concat([
+    { ...ball(90, "magic", null, 240, 560), magicBallId: "magic_visible" }
+  ]),
+  pockets
+}, {
+  difficulty: "hard",
+  random: fixedRandom
+});
+assert.strictEqual(
+  directWithMagic.targetBallId,
+  2,
+  "IA deve priorizar uma encaçapada correta quando ela existe"
+);
+
+const noCertainPotWorld = {
+  balls: [
+    ball(1, "cue", 0, 180, 320),
+    ball(2, "object", 4, 930, 120),
+    { ...ball(91, "magic", null, 430, 350), magicBallId: "magic_option" }
+  ],
+  pockets: []
+};
+const magicPlan = ArcaneAI.planShot(noCertainPotWorld, {
+  difficulty: "normal",
+  random: fixedRandom
+});
+assert.strictEqual(magicPlan.type, "magic_touch", "IA deve buscar a Bola Mágica sem encaçapada segura");
+assert.strictEqual(magicPlan.targetBallId, 91);
+
+const cautiousEasyPlan = ArcaneAI.planShot(noCertainPotWorld, {
+  difficulty: "easy",
+  random: () => 0.99
+});
+assert(!cautiousEasyPlan.type.startsWith("magic_"), "IA fácil não deve buscar magia em toda jogada");
+
 const eightWorld = {
   balls: [
     ball(1, "cue", 0, 180, 320),

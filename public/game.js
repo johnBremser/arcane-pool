@@ -46,6 +46,7 @@
   let currentShotStart = null;
   let lastResolvedShot = null;
   let messageUntil = 0;
+  let arcaneAlertTimer = null;
 
   let lastBallSoundAt = 0;
   let lastCushionSoundAt = 0;
@@ -87,12 +88,24 @@
     active: false
   };
 
+  const PAUSE_MAX_MS = 20000;
+  const manualPause = {
+    active: false,
+    network: false,
+    deadlineAt: 0,
+    pausedBySeat: null,
+    pausedByName: "",
+    timeoutId: null
+  };
+
   let lastHelpFocus = null;
 
   const KEY_ACTIONS = new Map([
     ["Escape", "cancel"],
     ["l", "toggle-shop"],
     ["L", "toggle-shop"],
+    ["p", "toggle-pause"],
+    ["P", "toggle-pause"],
     ["r", "reset-match"],
     ["R", "reset-match"]
   ]);
@@ -155,6 +168,7 @@
   function cacheDom() {
     dom.canvas = document.getElementById("gameCanvas");
     dom.resetButton = document.getElementById("resetButton");
+    dom.pauseButton = document.getElementById("pauseButton");
     dom.audioButton = document.getElementById("audioButton");
     dom.musicButton = document.getElementById("musicButton");
     dom.turnLabel = document.getElementById("turnLabel");
@@ -174,6 +188,13 @@
     dom.scoreboard = document.getElementById("scoreboard");
     dom.playerCards = document.querySelectorAll(".playerCard");
     dom.toastContainer = document.getElementById("toastContainer");
+    dom.arcaneAlert = document.getElementById("arcaneAlert");
+    dom.arcaneAlertKicker = document.getElementById("arcaneAlertKicker");
+    dom.arcaneAlertText = document.getElementById("arcaneAlertText");
+    dom.pauseOverlay = document.getElementById("pauseOverlay");
+    dom.pauseMessage = document.getElementById("pauseMessage");
+    dom.pauseCountdown = document.getElementById("pauseCountdown");
+    dom.pauseResumeButton = document.getElementById("pauseResumeButton");
     dom.gameOverOverlay = document.getElementById("gameOverOverlay");
     dom.gameOverTitle = document.getElementById("gameOverTitle");
     dom.gameOverReason = document.getElementById("gameOverReason");
@@ -277,6 +298,9 @@
       updateAudioUI();
       if (enabled) AudioSys.playClick();
     });
+
+    dom.pauseButton.addEventListener("click", requestPauseToggle);
+    dom.pauseResumeButton.addEventListener("click", requestPauseToggle);
 
     dom.musicButton.addEventListener("click", () => {
       const shouldEnable = !AudioSys.isAmbientEnabled();
@@ -427,7 +451,14 @@
 
       const action = KEY_ACTIONS.get(e.key);
 
+      if (action === "toggle-pause") {
+        e.preventDefault();
+        requestPauseToggle();
+        return;
+      }
+
       if (action === "cancel") {
+        if (manualPause.active) return;
         if (!dom.helpOverlay.classList.contains("hidden")) {
           closeHelp();
         } else if (isControlMenuOpen()) {
@@ -576,8 +607,142 @@
       }).join("");
   }
 
+  function canPauseMatch() {
+    if (manualPause.active || game.phase !== "playing") return false;
+    if (shotActive || Physics.ballsMoving() || pendingSpecialTarget) return false;
+    if (networkMatch.active && networkMatch.seat !== game.currentSeat) return false;
+    const currentPlayer = game.players[game.currentSeat - 1];
+    return Boolean(currentPlayer && !currentPlayer.shop.open);
+  }
+
+  function updatePauseButton() {
+    if (!dom.pauseButton) return;
+    dom.pauseButton.textContent = manualPause.active ? "Retomar (P)" : "Pausar (P)";
+    dom.pauseButton.disabled = !manualPause.active && !canPauseMatch();
+  }
+
+  function showPauseOverlay({ network = false, seat = null, playerName = "", remainingMs = PAUSE_MAX_MS } = {}) {
+    if (manualPause.timeoutId) clearTimeout(manualPause.timeoutId);
+    manualPause.active = true;
+    manualPause.network = network;
+    manualPause.pausedBySeat = Number(seat) || null;
+    manualPause.pausedByName = playerName || "";
+    manualPause.deadlineAt = Date.now() + Math.max(0, Number(remainingMs) || PAUSE_MAX_MS);
+    dom.pauseMessage.textContent = network
+      ? `${manualPause.pausedByName || "Um jogador"} pediu uma pausa. A partida retoma automaticamente em até 20 segundos.`
+      : "O jogo retoma automaticamente em até 20 segundos.";
+    dom.pauseResumeButton.disabled = false;
+    dom.pauseResumeButton.textContent = "Continuar agora";
+    dom.pauseOverlay.classList.remove("hidden");
+    closeControlMenus();
+    cancelDrag();
+    cancelAITurn();
+    setStateLabel("Partida pausada");
+    updatePauseUI();
+    updatePauseButton();
+
+    if (!network) {
+      manualPause.timeoutId = window.setTimeout(() => {
+        if (manualPause.active && !manualPause.network) resumeLocalPause("timeout");
+      }, Math.max(0, Number(remainingMs) || PAUSE_MAX_MS));
+    }
+  }
+
+  function clearManualPause() {
+    if (manualPause.timeoutId) clearTimeout(manualPause.timeoutId);
+    manualPause.timeoutId = null;
+    manualPause.active = false;
+    manualPause.network = false;
+    manualPause.deadlineAt = 0;
+    manualPause.pausedBySeat = null;
+    manualPause.pausedByName = "";
+    dom.pauseOverlay.classList.add("hidden");
+    dom.pauseResumeButton.disabled = false;
+    updatePauseButton();
+  }
+
+  function resumeLocalPause(reason = "manual") {
+    if (!manualPause.active || manualPause.network) return;
+    Rules.resumeTurnTimer(game, Date.now());
+    clearManualPause();
+    updateShotTimer();
+    setStateLabel(isAITurn() ? "IA retomando…" : "Sua vez");
+    showToast(reason === "timeout" ? "Pausa encerrada após 20 segundos" : "Partida retomada", "info");
+  }
+
+  function requestPauseToggle() {
+    AudioSys.ensure();
+    AudioSys.playClick();
+    if (manualPause.active) {
+      if (manualPause.network) {
+        dom.pauseResumeButton.disabled = true;
+        dom.pauseResumeButton.textContent = "Retomando…";
+        if (!networkMatch.sendCommand || !networkMatch.sendCommand("resume_match")) {
+          dom.pauseResumeButton.disabled = false;
+          dom.pauseResumeButton.textContent = "Continuar agora";
+          showToast("Não foi possível retomar a partida", "error");
+        }
+      } else {
+        resumeLocalPause("manual");
+      }
+      return;
+    }
+
+    if (!canPauseMatch()) {
+      showToast(
+        networkMatch.active && networkMatch.seat !== game.currentSeat
+          ? "Somente quem está na vez pode pausar"
+          : "Pause somente entre tacadas",
+        "info"
+      );
+      return;
+    }
+
+    if (networkMatch.active) {
+      networkMatch.sendCommand("pause_match");
+      return;
+    }
+
+    Rules.pauseTurnTimer(game, Date.now());
+    showPauseOverlay({ remainingMs: PAUSE_MAX_MS });
+  }
+
+  function updatePauseUI() {
+    if (!manualPause.active) return;
+    const remainingMs = Math.max(0, manualPause.deadlineAt - Date.now());
+    const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    dom.pauseCountdown.textContent = `00:${String(totalSeconds).padStart(2, "0")}`;
+    if (manualPause.network && remainingMs <= 0) {
+      dom.pauseResumeButton.disabled = true;
+      dom.pauseResumeButton.textContent = "Retomando…";
+    }
+  }
+
+  function applyMultiplayerPaused(payload = {}) {
+    if (!networkMatch.active) return;
+    if (payload.match) applyNetworkMatchSnapshot(payload.match);
+    if (game.turn && game.turn.timer) {
+      game.turn.timer.paused = true;
+      game.turn.timer.deadlineAt = null;
+    }
+    showPauseOverlay({
+      network: true,
+      seat: payload.seat,
+      playerName: payload.playerName,
+      remainingMs: payload.remainingMs
+    });
+  }
+
+  function applyMultiplayerResumed(payload = {}) {
+    if (!networkMatch.active) return;
+    clearManualPause();
+    if (payload.match) applyNetworkMatchSnapshot(payload.match);
+    setStateLabel(networkMatch.seat === game.currentSeat ? "Sua vez online" : "Vez do adversário");
+    showToast(payload.reason === "timeout" ? "Pausa encerrada após 20 segundos" : "Partida retomada", "info");
+  }
+
   function handleVisibilityChange() {
-    if (networkMatch.active || !game.turn || !game.turn.timer) return;
+    if (manualPause.active || networkMatch.active || !game.turn || !game.turn.timer) return;
 
     if (document.hidden) {
       if (
@@ -824,6 +989,7 @@
 
   function canShoot() {
     if (game.phase !== "playing") return false;
+    if (manualPause.active) return false;
     if (shotActive) return false;
     if (pendingSpecialTarget) return false;
     if (networkMatch.active && networkMatch.seat !== game.currentSeat) return false;
@@ -898,6 +1064,7 @@
   function startNewMatch() {
     cancelAITurn();
     focusPause.active = false;
+    clearManualPause();
     Rules.resetMatch(game, game.mode, Date.now());
     configureLocalPlayers();
 
@@ -958,8 +1125,8 @@
         timer: {
           durationMs: CONFIG.turn.durationMs,
           remainingMs,
-          deadlineAt: Date.now() + remainingMs,
-          paused: false
+          deadlineAt: manualPause.active ? null : Date.now() + remainingMs,
+          paused: manualPause.active
         }
       };
     }
@@ -1128,6 +1295,7 @@
   function enterMultiplayer(options) {
     cancelAITurn();
     focusPause.active = false;
+    clearManualPause();
     aiMatch.enabled = false;
     dom.opponentSelect.value = "local";
     updateGameMenuSummary();
@@ -1160,6 +1328,10 @@
     applyNetworkMatchSnapshot(options.match);
     if (options.privatePlayer) applyMultiplayerPrivateState(options.privatePlayer);
     if (Array.isArray(options.physics)) Physics.loadSnapshot(options.physics);
+    if (options.pause) {
+      applyMultiplayerPaused({ ...options.pause, match: options.match });
+      return;
+    }
     setStateLabel(
       networkMatch.seat === game.currentSeat
         ? (isOpeningBreak() ? "Arraste a branca ↕ antes da saída" : "Sua vez online")
@@ -1313,6 +1485,14 @@
       : (["ice_zone", "sticky_zone"].includes(effect.defId) ? " — zona criada" :
         (effect.defId === "rewind" ? " — jogada desfeita" : " — efeito armado"));
     showToast(`${effect.name}${suffix}`, "arcana");
+    const sourceSeat = Number(effect.sourceSeat || payload.sourceSeat);
+    if (sourceSeat && sourceSeat !== networkMatch.seat) {
+      const sourcePlayer = game.players.find((player) => player.seat === sourceSeat);
+      showArcaneAlert(
+        `${sourcePlayer ? sourcePlayer.name : "O adversário"} usou magia`,
+        `${effect.name}${suffix}`
+      );
+    }
     updateInventoryUI();
     updateActiveEffectsUI();
     if (payload.immediate) setStateLabel(effect.defId === "rewind" ? "Jogada rebobinada" : "Mesa alterada");
@@ -1445,6 +1625,7 @@
     if (Array.isArray(payload.physics)) setNetworkPhysicsSnapshot(payload.physics, false);
     if (payload.match) applyNetworkMatchSnapshot(payload.match);
     shotActive = false;
+    clearManualPause();
 
     const winner = game.players.find((player) => player.seat === payload.winnerSeat);
     const loser = game.players.find((player) => player.seat !== payload.winnerSeat);
@@ -1477,6 +1658,7 @@
   }
 
   function leaveMultiplayer() {
+    clearManualPause();
     networkMatch.active = false;
     networkMatch.seat = null;
     networkMatch.roomCode = null;
@@ -1580,9 +1762,12 @@
     const frameDt = Math.min((now - lastTime) / 1000, CONFIG.physics.maxFrameDt);
     lastTime = now;
 
+    updatePauseUI();
     accumulator += frameDt;
 
-    if (networkMatch.active) {
+    if (manualPause.active) {
+      accumulator = 0;
+    } else if (networkMatch.active) {
       accumulator = 0;
       updateNetworkPhysics(frameDt);
     } else {
@@ -1599,6 +1784,13 @@
   }
 
   function updateGame(dt) {
+    if (manualPause.active) {
+      updateParticles(dt);
+      updateForceUI();
+      updateShotTimer();
+      updatePauseButton();
+      return;
+    }
     if (shotActive && currentShotEffects.soft_touch) {
       softTrailAccumulator += dt;
       if (softTrailAccumulator >= 0.045) {
@@ -1634,6 +1826,7 @@
     updateParticles(dt);
     updateForceUI();
     updateShotTimer();
+    updatePauseButton();
     maybeScheduleAITurn();
   }
 
@@ -1707,7 +1900,11 @@
     aiMatch.thinking = false;
     document.body.classList.remove("ai-thinking");
     aim.angle = plan.angle;
-    setStateLabel(plan.type === "pot" ? "IA tenta a caçapa" : "IA joga com segurança");
+    setStateLabel(
+      plan.type === "pot"
+        ? "IA tenta a caçapa"
+        : (plan.type.startsWith("magic_") ? "IA busca a Bola Mágica" : "IA joga com segurança")
+    );
     executeLocalShot(plan.angle, plan.power, plan.spin, {
       openingBreak: isOpeningBreak()
     });
@@ -2696,6 +2893,11 @@
         ? " — zona criada"
         : " — efeito armado";
     showToast(`${result.effect.name}${suffix}`, "arcana");
+    const sourcePlayer = game.players[game.currentSeat - 1];
+    showArcaneAlert(
+      `${sourcePlayer ? sourcePlayer.name : "Jogador"} usou magia`,
+      `${result.effect.name}${suffix}`
+    );
     updateInventoryUI();
     updateActiveEffectsUI();
     updateScoreboard();
@@ -2757,6 +2959,18 @@
         toast.remove();
       }, 280);
     }, 2200);
+  }
+
+  function showArcaneAlert(kicker, message, durationMs = 5200) {
+    if (!dom.arcaneAlert) return;
+    if (arcaneAlertTimer) clearTimeout(arcaneAlertTimer);
+    dom.arcaneAlertKicker.textContent = kicker;
+    dom.arcaneAlertText.textContent = message;
+    dom.arcaneAlert.classList.remove("hidden");
+    arcaneAlertTimer = window.setTimeout(() => {
+      dom.arcaneAlert.classList.add("hidden");
+      arcaneAlertTimer = null;
+    }, durationMs);
   }
 
   function render() {
@@ -3553,6 +3767,8 @@
     applyMultiplayerShotAccepted,
     setMultiplayerShotActive,
     applyMultiplayerTurn,
+    applyMultiplayerPaused,
+    applyMultiplayerResumed,
     applyMultiplayerShotResult,
     finishMultiplayer,
     applyMultiplayerRematchState,

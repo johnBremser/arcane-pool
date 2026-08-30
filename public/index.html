@@ -63,6 +63,7 @@
             <div class="popoverActions">
               <button id="resetButton" type="button">Nova partida</button>
               <button id="multiplayerButton" type="button" class="secondary">Multiplayer</button>
+              <button id="pauseButton" class="secondary wideAction" type="button">Pausar (P)</button>
             </div>
           </div>
         </div>
@@ -70,11 +71,11 @@
         <div class="controlMenuWrap">
           <button id="audioMenuButton" class="menuTrigger" type="button" aria-controls="audioMenu" aria-expanded="false">
             <span>Áudio</span>
-            <small id="audioMenuSummary">desligado</small>
+            <small id="audioMenuSummary">efeitos</small>
           </button>
           <div id="audioMenu" class="controlPopover audioPopover hidden" role="dialog" aria-label="Configurações de áudio">
             <strong>Configurações de áudio</strong>
-            <button id="audioButton" type="button" aria-pressed="false">Efeitos: desligados</button>
+            <button id="audioButton" type="button" aria-pressed="true">Efeitos: ligados</button>
             <button id="musicButton" type="button" aria-pressed="false">Música: desligada</button>
           </div>
         </div>
@@ -83,6 +84,14 @@
     </header>
 
     <main id="stage">
+      <div id="arcaneAlert" class="hidden" role="status" aria-live="assertive">
+        <span class="arcaneAlertGlyph">✦</span>
+        <span class="arcaneAlertCopy">
+          <small id="arcaneAlertKicker">Magia adversária</small>
+          <strong id="arcaneAlertText">Efeito ativado</strong>
+        </span>
+      </div>
+
       <canvas id="gameCanvas" aria-label="Mesa de sinuca"></canvas>
 
       <div id="forcePanel" aria-label="Indicador de força">
@@ -138,6 +147,19 @@
 
       <div id="toastContainer"></div>
     </main>
+
+    <div id="pauseOverlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
+      <section id="pauseCard">
+        <span class="pauseGlyph" aria-hidden="true">Ⅱ</span>
+        <div>
+          <span class="eyebrow">Intervalo rápido</span>
+          <h2 id="pauseTitle">Partida pausada</h2>
+          <p id="pauseMessage">O jogo retoma automaticamente em até 20 segundos.</p>
+        </div>
+        <strong id="pauseCountdown" aria-label="Tempo restante da pausa">00:20</strong>
+        <button id="pauseResumeButton" type="button">Continuar agora</button>
+      </section>
+    </div>
 
     <div id="shopOverlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="shopTitle">
       <div id="shopCard">

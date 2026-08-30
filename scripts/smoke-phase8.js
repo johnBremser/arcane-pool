@@ -111,6 +111,27 @@ async function run() {
     const magicSpawned = await host.waitFor("arcane_ball_spawned");
     assert.equal(magicSpawned.payload.id, hostStart.payload.match.magicBall.id);
 
+    guest.send("pause_match", {}, roomCode);
+    const pauseForbidden = await guest.waitFor("error", (message) => message.payload.code === "not_your_turn");
+    assert.equal(pauseForbidden.payload.code, "not_your_turn");
+
+    host.send("pause_match", {}, roomCode);
+    const [hostPaused, guestPaused] = await Promise.all([
+      host.waitFor("match_paused"),
+      guest.waitFor("match_paused")
+    ]);
+    assert.equal(hostPaused.payload.seat, 1);
+    assert(hostPaused.payload.remainingMs <= 20000 && hostPaused.payload.remainingMs > 19000);
+    assert.equal(guestPaused.payload.playerName, "Mago Azul");
+
+    guest.send("resume_match", {}, roomCode);
+    const [hostResumed, guestResumed] = await Promise.all([
+      host.waitFor("match_resumed"),
+      guest.waitFor("match_resumed")
+    ]);
+    assert.equal(hostResumed.payload.pausedBySeat, 1);
+    assert.equal(guestResumed.payload.reason, "manual");
+
     guest.send("open_shop", {}, roomCode);
     const forbidden = await guest.waitFor("error");
     assert.equal(forbidden.payload.code, "not_your_turn");
@@ -154,6 +175,7 @@ async function run() {
     ]);
     assert.equal(softUsed.payload.privatePlayer.inventory[0].usesLeft, softTouch.maxUses - 1);
     assert.equal(softPublic.payload.appliedToSeat, 1);
+    assert.equal(softPublic.payload.effect.sourceSeat, 1);
 
     host.send("use_special", { instanceId: softTouch.uid }, roomCode);
     const duplicateUse = await host.waitFor("error", (message) => message.payload.code === "already_active");

@@ -3,6 +3,7 @@ const PhysicsCore = (() => {
   const random = typeof options.random === "function" ? options.random : Math.random;
   let balls = [];
   let pockets = [];
+  let pocketJaws = [];
   let callbacks = {};
   let ballIdCounter = 0;
 
@@ -50,6 +51,7 @@ const PhysicsCore = (() => {
 
   function init() {
     pockets = createPockets();
+    pocketJaws = createPocketJaws();
     reset();
   }
 
@@ -58,12 +60,30 @@ const PhysicsCore = (() => {
     const H = CONFIG.table.height;
 
     return [
-      { id: 0, x: 0, y: 0 },
-      { id: 1, x: W / 2, y: -12 },
-      { id: 2, x: W, y: 0 },
-      { id: 3, x: 0, y: H },
-      { id: 4, x: W / 2, y: H + 12 },
-      { id: 5, x: W, y: H }
+      { id: 0, type: "corner", x: 0, y: 0 },
+      { id: 1, type: "side", x: W / 2, y: -12 },
+      { id: 2, type: "corner", x: W, y: 0 },
+      { id: 3, type: "corner", x: 0, y: H },
+      { id: 4, type: "side", x: W / 2, y: H + 12 },
+      { id: 5, type: "corner", x: W, y: H }
+    ];
+  }
+
+  function createPocketJaws() {
+    const W = CONFIG.table.width;
+    const H = CONFIG.table.height;
+    const geometry = CONFIG.table.pocketJaw;
+    const corner = geometry.cornerMouth;
+    const side = geometry.sideMouthHalf;
+    const radius = geometry.radius;
+
+    return [
+      { x: corner, y: 0, radius }, { x: 0, y: corner, radius },
+      { x: W - corner, y: 0, radius }, { x: W, y: corner, radius },
+      { x: corner, y: H, radius }, { x: 0, y: H - corner, radius },
+      { x: W - corner, y: H, radius }, { x: W, y: H - corner, radius },
+      { x: W / 2 - side, y: 0, radius }, { x: W / 2 + side, y: 0, radius },
+      { x: W / 2 - side, y: H, radius }, { x: W / 2 + side, y: H, radius }
     ];
   }
 
@@ -399,7 +419,8 @@ const PhysicsCore = (() => {
         if (Math.abs(ball.spinY) < 0.02) ball.spinY = 0;
       }
 
-      handlePocketMouth(ball, dt);
+      collidePocketJaws(ball);
+      handlePocketMouth(ball);
       if (!ball.active) continue;
 
       collideCushions(ball);
@@ -495,7 +516,7 @@ const PhysicsCore = (() => {
     }
   }
 
-  function handlePocketMouth(ball, dt) {
+  function handlePocketMouth(ball) {
     const captureRadius = CONFIG.table.captureRadius;
 
     for (const pocket of pockets) {
@@ -507,24 +528,45 @@ const PhysicsCore = (() => {
         pocketBall(ball, pocket);
         return;
       }
-
-      if (dist < CONFIG.table.pocketRadius * 2.15 && isOutsidePlayfield(ball)) {
-        const pull = 940;
-        const nx = (pocket.x - ball.x) / Math.max(1, dist);
-        const ny = (pocket.y - ball.y) / Math.max(1, dist);
-
-        ball.vx += nx * pull * dt;
-        ball.vy += ny * pull * dt;
-      }
     }
   }
 
-  function isOutsidePlayfield(ball) {
-    const W = CONFIG.table.width;
-    const H = CONFIG.table.height;
-    const r = ball.radius;
+  function collidePocketJaws(ball) {
+    const geometry = CONFIG.table.pocketJaw;
 
-    return ball.x < r || ball.x > W - r || ball.y < r || ball.y > H - r;
+    for (const jaw of pocketJaws) {
+      let dx = ball.x - jaw.x;
+      let dy = ball.y - jaw.y;
+      let dist = Math.hypot(dx, dy);
+      const minDist = ball.radius + jaw.radius;
+      if (dist >= minDist) continue;
+
+      if (dist < 0.001) {
+        dx = CONFIG.table.width / 2 - jaw.x;
+        dy = CONFIG.table.height / 2 - jaw.y;
+        dist = Math.hypot(dx, dy) || 1;
+      }
+
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const overlap = minDist - dist;
+      ball.x += nx * (overlap + 0.05);
+      ball.y += ny * (overlap + 0.05);
+
+      const normalSpeed = ball.vx * nx + ball.vy * ny;
+      if (normalSpeed >= 0) continue;
+
+      const tx = -ny;
+      const ty = nx;
+      const tangentSpeed = (ball.vx * tx + ball.vy * ty) * geometry.tangentRetention;
+      const reflectedNormal = -normalSpeed * geometry.restitution;
+      ball.vx = nx * reflectedNormal + tx * tangentSpeed;
+      ball.vy = ny * reflectedNormal + ty * tangentSpeed;
+      ball.spinX *= 0.65;
+
+      emitCushion(ball, Math.abs(normalSpeed));
+      markCushionOnBall(ball);
+    }
   }
 
   function pocketBall(ball, pocket) {
@@ -622,16 +664,17 @@ const PhysicsCore = (() => {
   function isOpenPocketArea(ball, wall) {
     const W = CONFIG.table.width;
     const H = CONFIG.table.height;
-    const mouth = CONFIG.table.pocketRadius + ball.radius + 17;
+    const corner = CONFIG.table.pocketJaw.cornerMouth;
+    const side = CONFIG.table.pocketJaw.sideMouthHalf;
 
-    for (const pocket of pockets) {
-      if (wall === "left" && pocket.x > 0) continue;
-      if (wall === "right" && pocket.x < W) continue;
-      if (wall === "top" && pocket.y > 0) continue;
-      if (wall === "bottom" && pocket.y < H) continue;
+    if (wall === "top" || wall === "bottom") {
+      return ball.x < corner
+        || ball.x > W - corner
+        || Math.abs(ball.x - W / 2) < side;
+    }
 
-      const dist = Math.hypot(ball.x - pocket.x, ball.y - pocket.y);
-      if (dist < mouth) return true;
+    if (wall === "left" || wall === "right") {
+      return ball.y < corner || ball.y > H - corner;
     }
 
     return false;
@@ -763,7 +806,7 @@ const PhysicsCore = (() => {
       const nearest = nearestPocket(ball);
       const dist = nearest ? Math.hypot(ball.x - nearest.x, ball.y - nearest.y) : Infinity;
 
-      if (dist < CONFIG.table.captureRadius * 2.8) {
+      if (dist <= CONFIG.table.captureRadius + ball.radius * 0.45) {
         pocketBall(ball, nearest);
         return;
       }
