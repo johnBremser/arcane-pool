@@ -11,7 +11,9 @@ const PhysicsCore = require("./public/physics.js");
 const Rules = require("./public/rules.js");
 
 const HOST = process.env.HOST || "0.0.0.0";
-const PORT = process.env.PORT === undefined ? 5201 : Number(process.env.PORT);
+const rawPort = process.env.PORT;
+const isSocket = typeof rawPort === "string" && (rawPort.startsWith("/") || rawPort.startsWith("\\\\.\\pipe\\"));
+const PORT = isSocket ? rawPort : (rawPort !== undefined ? Number(rawPort) : 5201);
 const PUBLIC_DIR = path.resolve(__dirname, "public");
 const RECONNECT_WINDOW_MS = CONFIG.network.reconnectWindowMs;
 const MATCH_PAUSE_MS = 20000;
@@ -1444,11 +1446,30 @@ wss.on("connection", (socket) => {
 const roomTicker = setInterval(tickRooms, 1000 / 60);
 server.on("close", () => clearInterval(roomTicker));
 
-server.listen(PORT, HOST, () => {
-  const address = server.address();
-  const actualPort = address && typeof address === "object" ? address.port : PORT;
-  console.log(`Arcane Pool disponível em http://localhost:${actualPort}`);
-  console.log(`Protocolo WebSocket v${Protocol.VERSION}; Fase 10 de polimento final completa.`);
+if (isSocket) {
+  server.listen(PORT, () => {
+    console.log(`Arcane Pool escutando no socket/pipe ${PORT}`);
+    console.log(`Protocolo WebSocket v${Protocol.VERSION}; Fase 10 de polimento final completa.`);
+  });
+} else {
+  server.listen(PORT, HOST, () => {
+    const address = server.address();
+    const actualPort = address && typeof address === "object" ? address.port : PORT;
+    console.log(`Arcane Pool disponível em http://localhost:${actualPort}`);
+    console.log(`Protocolo WebSocket v${Protocol.VERSION}; Fase 10 de polimento final completa.`);
+  });
+}
+
+server.on("error", (err) => {
+  console.error("[FATAL] Erro no servidor HTTP/WebSocket:", err);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled Rejection:", reason);
 });
 
 module.exports = { server, wss, rooms };

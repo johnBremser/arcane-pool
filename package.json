@@ -8,6 +8,7 @@
     "test": "npm run test:basic && npm run test:phase7 && npm run test:phase8 && npm run test:phase9 && npm run test:phase10",
     "start": "node server.js",
     "dev": "node server.js",
+    "build": "node -e \"console.log('Build concluído com sucesso.')\"",
     "test:basic": "node scripts/smoke-phase6.js",
     "test:phase7": "node scripts/smoke-phase7.js",
     "test:phase8": "node scripts/smoke-phase8.js",
